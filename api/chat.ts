@@ -9,6 +9,21 @@ const buildCompleteNutrition = (d: any = {}) => ({
   calories: safeNum(d.calories),
   carbs: safeNum(d.carbs ?? d.carbohydrates),
   fat: safeNum(d.fat),
+  vitaminA: safeNum(d.vitaminA),
+  vitaminC: safeNum(d.vitaminC),
+  vitaminD: safeNum(d.vitaminD),
+  vitaminE: safeNum(d.vitaminE),
+  vitaminK: safeNum(d.vitaminK),
+  vitaminB12: safeNum(d.vitaminB12),
+  iron: safeNum(d.iron),
+  calcium: safeNum(d.calcium),
+  magnesium: safeNum(d.magnesium),
+  zinc: safeNum(d.zinc),
+  water: safeNum(d.water),
+  sodium: safeNum(d.sodium),
+  potassium: safeNum(d.potassium),
+  chloride: safeNum(d.chloride),
+  fiber: safeNum(d.fiber),
 });
 
 const extractJson = (text: string) => {
@@ -32,6 +47,7 @@ Analyze the given image and/or description to identify:
 Estimate per-slice nutrition (calories, protein, carbs, fat).
 
 Return JSON only:
+
 {
   "type": "string",
   "slices": number,
@@ -41,6 +57,18 @@ Return JSON only:
   "carbs_per_slice": number,
   "fat_per_slice": number,
   "summary": "short description"
+}
+
+Example:
+{
+  "type": "regular crust pepperoni pizza",
+  "slices": 2,
+  "weight_per_slice_g": 120,
+  "calories_per_slice": 285,
+  "protein_per_slice": 12,
+  "carbs_per_slice": 30,
+  "fat_per_slice": 10,
+  "summary": "Two slices of regular pepperoni pizza, about 240g total (~570 kcal, 24g protein)."
 }
 `;
 
@@ -65,7 +93,7 @@ Return JSON only:
     body: JSON.stringify({ model: "gpt-4o", messages, temperature: 0 }),
   });
 
-  const data = await resp.json();
+  const data = await resp.json() as any;
   const content: string = data.choices?.[0]?.message?.content ?? "";
   const parsed = extractJson(content);
 
@@ -76,6 +104,7 @@ Return JSON only:
   const totalCarbs = safeNum(parsed.carbs_per_slice * parsed.slices);
   const totalFat = safeNum(parsed.fat_per_slice * parsed.slices);
 
+  console.log("🍕 Pizza Summary:", parsed.summary);
   return {
     calories: totalCalories,
     protein: totalProtein,
@@ -101,9 +130,12 @@ You are an expert nutrition vision analyst.
 1️⃣ Identify every visible edible item in the meal.
 2️⃣ Estimate each item's weight (grams) and note any hidden ingredients like oil or sauce.
 3️⃣ Use realistic portion sizes (total meal < 600g unless clearly large).
-Return STRICT JSON:
+Return STRICT JSON with this schema:
+
 {
-  "foods": [{"name": "string", "weight_g": number, "confidence": 0.0-1.0}],
+  "foods": [
+    {"name": "string", "weight_g": number, "confidence": 0.0-1.0}
+  ],
   "summary": "short, human-readable description"
 }
 `;
@@ -128,18 +160,12 @@ Return STRICT JSON:
     body: JSON.stringify({ model: "gpt-4o", messages: stage1Msgs, temperature: 0 }),
   });
 
-  const stage1Data = await stage1Resp.json();
+  const stage1Data = (await stage1Resp.json()) as any;
   const stage1Content: string = stage1Data.choices?.[0]?.message?.content ?? "";
   const stage1 = extractJson(stage1Content) ?? { foods: [], summary: "" };
 
-  console.log("🍲 Meal Summary:", stage1.summary || "(none)");
+  console.log("🍲 AI Bowl Summary:", stage1.summary || "(none)");
   console.table(stage1.foods);
-
-  // Build readable ingredient list
-  const ingredientSummary =
-    stage1.foods && stage1.foods.length
-      ? stage1.foods.map((f: any) => `${safeNum(f.weight_g)}g ${f.name}`).join(", ")
-      : "";
 
   /* ---------- Pizza special case ---------- */
   const combinedText =
@@ -147,18 +173,10 @@ Return STRICT JSON:
   if (combinedText.includes("pizza")) {
     try {
       const pizzaResult = await runPizzaScript(photoUrl, description);
-      return res.status(200).json({
-        status: "success",
-        meal_description: ingredientSummary || pizzaResult.ai_summary || "Meal analyzed",
-        nutrition: {
-          protein: pizzaResult.protein,
-          calories: pizzaResult.calories,
-          carbs: pizzaResult.carbs,
-          fat: pizzaResult.fat,
-        },
-      });
+      return res.status(200).json(pizzaResult);
     } catch (err) {
       console.error("❌ Pizza script failed:", err);
+      // fallback to normal nutrition estimation below
     }
   }
 
@@ -169,7 +187,14 @@ Return STRICT JSON:
   const stage2Prompt = `
 You are an expert dietitian. Estimate total nutrition for: ${foodList}.
 Use realistic serving-based calculations and standard food databases (e.g., USDA averages).
-Output ONLY one JSON object with numeric integer values for calories, protein, carbs, fat.
+Output ONLY one JSON object with numeric integer values for
+calories, protein, carbs, fat, vitaminA, vitaminC, vitaminD, vitaminE, vitaminK,
+vitaminB12, iron, calcium, magnesium, zinc, water, sodium, potassium, chloride, fiber.
+
+Sanity rules:
+- Never exceed 1200 kcal unless total weight > 500g.
+- Use 0 if unknown.
+- Respond with JSON only.
 `;
 
   const stage2Resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -179,20 +204,20 @@ Output ONLY one JSON object with numeric integer values for calories, protein, c
       model: "gpt-4o",
       messages: [{ role: "system", content: stage2Prompt }],
       temperature: 0,
-      max_tokens: 500,
+      max_tokens: 800,
     }),
   });
 
-  const stage2Data = await stage2Resp.json();
+  const stage2Data = (await stage2Resp.json()) as any;
   const stage2Content: string = stage2Data.choices?.[0]?.message?.content ?? "";
   const parsed = extractJson(stage2Content);
 
   if (parsed) {
     const nutrition = buildCompleteNutrition(parsed);
     return res.status(200).json({
-      status: "success",
-      meal_description: ingredientSummary || stage1.summary || "Meal analyzed",
-      nutrition,
+      ...nutrition,
+      ai_summary: stage1.summary || "",
+      ai_foods: stage1.foods || [],
     });
   }
 
