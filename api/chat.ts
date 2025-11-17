@@ -131,32 +131,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const stage1Prompt = `
 You are an expert nutrition vision analyst.
 
-Your tasks:
-1. Identify every visible edible item in the meal.
-2. Estimate each item's weight in grams.
-3. Use all available visual cues to estimate real-world size:
-   - Use reference objects when visible: hand, fingers, fork, spoon, knife, chopsticks, plate, bowl, cup, bottle, known packaging.
-   - Assume common real-world dimensions:
-     • dinner plate: 26–28 cm diameter
-     • small plate: 20–22 cm
-     • fork/spoon: 16–20 cm
-     • mug: 8–10 cm tall
-   - Infer approximate camera distance from:
-     • field of view (how much of the table is visible)
-     • distortion and perspective
-     • how large objects appear in the frame.
-4. Apply hybrid portion correction:
-   - If reference objects and geometry are clear (high confidence), apply mild correction (about ±10–20%) to refine weights.
-   - If the meal is large or the camera is far / angled and portion size might be underestimated, allow stronger correction (about +30–60%) where appropriate.
-   - Apply corrections per item when needed (e.g., a big bowl of rice vs a small sauce cup).
-5. Do NOT artificially limit total meal weight. Large meals can exceed 800–1200g.
-6. Use realistic densities:
-   - cooked rice/pasta: ~130–170 g per cup
-   - cooked meat: ~120–180 g per piece (chicken breast, steak)
-   - cheese: ~25–30 g per slice or small handful
-   - liquids and soups: volume roughly matches the container.
-
-Return STRICT JSON ONLY with this schema:
+Identify all visible foods and estimate their weights in grams.
+Use visual reasoning and realistic densities.
+Return STRICT JSON ONLY:
 
 {
   "foods": [
@@ -212,11 +189,10 @@ Return STRICT JSON ONLY with this schema:
       return res.status(200).json(pizzaResult);
     } catch (err) {
       console.error("❌ Pizza script failed:", err);
-      // fallback to normal nutrition estimation below
     }
   }
 
-  /* ---------- Stage 2: compute nutrition normally (no kcal cap) ---------- */
+  /* ---------- Stage 2: compute nutrition ---------- */
   const foodList =
     (stage1.foods && stage1.foods.length
       ? stage1.foods
@@ -231,20 +207,11 @@ Return STRICT JSON ONLY with this schema:
     ) || 0;
 
   const stage2Prompt = `
-You are an expert dietitian.
+Estimate TOTAL nutrition for:
+${foodList}
+Estimated total weight: ${totalWeight} g
 
-Estimate the TOTAL nutrition for this meal based on the foods and weights:
-Foods: ${foodList}
-Estimated total meal weight: ${totalWeight} g
-
-Use realistic serving-based calculations and standard food databases (e.g., USDA averages).
-
-Important rules:
-- Large meals can easily exceed 1000–2000 kcal depending on ingredients (e.g., pizza, fast food, large rice/meat plates).
-- Do NOT artificially cap or limit calories; follow the weights and typical energy density of each food.
-- If a micronutrient is genuinely unknown, use 0 rather than inventing a random number.
-
-Return STRICT JSON ONLY with a single object:
+Return STRICT JSON ONLY with:
 
 {
   "calories": number,
@@ -284,14 +251,52 @@ Return STRICT JSON ONLY with a single object:
   const stage2Content: string = stage2Data.choices?.[0]?.message?.content ?? "";
   const parsed = extractJson(stage2Content);
 
-  if (parsed) {
-    const nutrition = buildCompleteNutrition(parsed);
-    return res.status(200).json({
-      ...nutrition,
-      ai_summary: stage1.summary || "",
-      ai_foods: stage1.foods || [],
-    });
+  if (!parsed)
+    return res.status(500).json({ error: "Failed to parse nutrition JSON" });
+
+  const nutrition = buildCompleteNutrition(parsed);
+
+  /* ---------- Stage 3: humanize summary ---------- */
+  let friendlySummary = stage1.summary || "";
+
+  if (friendlySummary) {
+    const tonePrompt = `
+Rewrite the following meal description in a clean, professional, human tone.
+
+Guidelines:
+- Remove robotic language such as "the image shows" or "likely part of"
+- Use natural, concise wording (1–2 short sentences)
+- If uncertain, use soft wording like "appears to be" or "looks like"
+- Do NOT mention cameras, photos, AI, or analysis
+- No emojis, no marketing language
+Return ONLY the rewritten text.
+
+Original:
+"${friendlySummary}"
+`;
+
+    try {
+      const toneResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "system", content: tonePrompt }],
+          temperature: 0.3,
+        }),
+      });
+
+      const toneData = await toneResp.json() as any;
+      const newText = toneData.choices?.[0]?.message?.content?.trim();
+      if (newText) friendlySummary = newText;
+    } catch (err) {
+      console.warn("⚠️ Tone rewrite failed, returning original summary.");
+    }
   }
 
-  return res.status(500).json({ error: "Failed to parse nutrition JSON" });
+  return res.status(200).json({
+    ...nutrition,
+    ai_summary: friendlySummary,
+    ai_foods: stage1.foods || [],
+  });
 }
