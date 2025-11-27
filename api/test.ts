@@ -143,6 +143,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
+  if (!OPENAI_API_KEY)
+    return res.status(500).json({ error: "Missing OpenAI key" });
+
   const { description = "", photoUrl } = req.body || {};
   console.log("📝 Description:", description);
   console.log("🖼 Photo URL:", photoUrl);
@@ -164,41 +167,60 @@ Return STRICT JSON ONLY:
 
   const stage0Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       temperature: 0,
-     messages: [
-  { role: "system", content: stage0Prompt },
-  { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." },
-  { role: "user", content: description || "(no description)" }
-]
-
-    })
+      messages: [
+        { role: "system", content: stage0Prompt },
+        {
+          role: "assistant",
+          content:
+            "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown.",
+        },
+        { role: "user", content: description || "(no description)" },
+      ],
+    }),
   });
 
-  const stage0Data = await stage0Resp.json() as any;
+  const stage0Data = (await stage0Resp.json()) as any;
   console.log("📥 [STAGE0] Raw response:", JSON.stringify(stage0Data, null, 2));
 
   const stage0Content = stage0Data.choices?.[0]?.message?.content || "";
   console.log("📄 [STAGE0] Content:", stage0Content);
 
-  const stage0 = extractJson(stage0Content) || { kind: "mixed_meal", normalized_name: description, quantity_description: description };
+  const stage0 =
+    extractJson(stage0Content) || {
+      kind: "mixed_meal",
+      normalized_name: description,
+      quantity_description: description,
+    };
   console.log("✅ [STAGE0] Parsed classification:", stage0);
 
   /* ---------- Bypass Stage1 & Stage2 for branded or single ingredient foods ---------- */
   if (stage0.kind === "branded" || stage0.kind === "single_food") {
-    console.log("🚀 [BYPASS] Activated for kind:", stage0.kind, "description:", description);
+    console.log(
+      "🚀 [BYPASS] Activated for kind:",
+      stage0.kind,
+      "description:",
+      description
+    );
 
-    const simplePrompt = `You return exact nutrition only.
+    const simplePrompt = `You are a nutrition expert.
+You will receive a user message describing ONE food and its quantity (for example: "2 eggs", "150g chicken", "1 banana", or a branded product like "1 bottle Muscle Milk").
+
 Rules:
-- Do NOT estimate weight
-- Do NOT apply mixed meal rules
-- Do NOT adjust calories/protein
-- Use canonical values or label values if branded
-- Multiply by quantity
+- Use typical nutrition database / label values for that exact food and quantity.
+- Do NOT estimate or mention weight; just use canonical typical values.
+- Do NOT treat it as a mixed meal.
+- NEVER return all zeros. If uncertain, use your best reasonable estimate.
+- Multiply by the quantity described in the user message.
 
-Return strict JSON:
+Return STRICT JSON ONLY:
+
 {
   "calories": number,
   "protein": number,
@@ -225,23 +247,46 @@ Return strict JSON:
 
     console.log("📤 [BYPASS] simplePrompt:", simplePrompt);
 
-    const simpleResp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        temperature: 0,
-       messages: [
-  { role: "system", content: simplePrompt },
-  { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." },
-  { role: "user", content: description }  // <<<< IMPORTANT
-]
+    const quantityText =
+      (stage0.quantity_description && stage0.normalized_name
+        ? `${stage0.quantity_description} ${stage0.normalized_name}`
+        : description || stage0.normalized_name || "1 serving"
+      ).trim();
 
-      })
-    });
+    const bypassMessages = [
+      { role: "system", content: simplePrompt },
+      {
+        role: "assistant",
+        content:
+          "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown.",
+      },
+      {
+        role: "user",
+        content: `Food to analyze: ${quantityText}`,
+      },
+    ];
 
-    const simpleData = await simpleResp.json() as any;
-    console.log("📥 [BYPASS] Raw response:", JSON.stringify(simpleData, null, 2));
+    const simpleResp = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          temperature: 0,
+          messages: bypassMessages,
+        }),
+      }
+    );
+
+    const simpleData = (await simpleResp.json()) as any;
+    console.log(
+      "📥 [BYPASS] Raw response:",
+      JSON.stringify(simpleData, null, 2)
+    );
 
     const simpleRaw = simpleData.choices?.[0]?.message?.content || "";
     console.log("📄 [BYPASS] Content:", simpleRaw);
@@ -251,7 +296,9 @@ Return strict JSON:
 
     if (!simpleParsed) {
       console.log("❌ [BYPASS] Failed to parse simple food JSON");
-      return res.status(500).json({ error: "Failed to parse simple food JSON" });
+      return res
+        .status(500)
+        .json({ error: "Failed to parse simple food JSON" });
     }
 
     const nutrition = buildCompleteNutrition(simpleParsed);
@@ -260,23 +307,23 @@ Return strict JSON:
     const displayName =
       stage0.quantity_description ||
       stage0.normalized_name ||
-      description;
+      description ||
+      "Food";
 
     const responseBody = {
       ...nutrition,
-      ai_summary: simpleParsed.ai_summary || `Logged: ${displayName}`,
-      ai_foods: simpleParsed.ai_foods || [
-        { name: displayName, weight_g: null, confidence: 1 }
-      ]
+      ai_summary:
+        simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
+      ai_foods:
+        simpleParsed.ai_foods || [
+          { name: displayName, weight_g: null, confidence: 1 },
+        ],
     };
 
     console.log("✅ [BYPASS] Final response:", responseBody);
 
     return res.status(200).json(responseBody);
   }
-
-  if (!OPENAI_API_KEY)
-    return res.status(500).json({ error: "Missing OpenAI key" });
 
   /* ---------- Stage 1: identify foods & weights (hybrid correction) ---------- */
   const stage1Prompt = `
@@ -407,7 +454,10 @@ Return STRICT JSON ONLY with:
 
   const stage2Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
     body: JSON.stringify({
       model: "gpt-4o",
       messages: [{ role: "system", content: stage2Prompt }],
@@ -456,7 +506,10 @@ Original:
     try {
       const toneResp = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{ role: "system", content: tonePrompt }],
@@ -464,15 +517,21 @@ Original:
         }),
       });
 
-      const toneData = await toneResp.json() as any;
-      console.log("📥 [STAGE3] Raw tone response:", JSON.stringify(toneData, null, 2));
+      const toneData = (await toneResp.json()) as any;
+      console.log(
+        "📥 [STAGE3] Raw tone response:",
+        JSON.stringify(toneData, null, 2)
+      );
 
       const newText = toneData.choices?.[0]?.message?.content?.trim();
       console.log("📄 [STAGE3] Tone content:", newText);
 
       if (newText) friendlySummary = newText;
     } catch (err) {
-      console.log("⚠️ [STAGE3] Tone rewrite failed, returning original summary.", err);
+      console.log(
+        "⚠️ [STAGE3] Tone rewrite failed, returning original summary.",
+        err
+      );
     }
   }
 
