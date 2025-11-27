@@ -1,3 +1,4 @@
+// Full code will be inserted now
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
@@ -124,6 +125,92 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
 
   const { description = "", photoUrl } = req.body || {};
+
+  /* ---------- Stage 0: classify meal before any analysis ---------- */
+  const stage0Prompt = `You classify the meal into one of three categories:
+- "branded": packaged or branded product (Muscle Milk, Premier Protein, Starbucks, etc.)
+- "single_food": single ingredient with clear quantity ("2 eggs", "150g chicken", "1 banana")
+- "mixed_meal": multiple ingredients or cooked with extras ("eggs with oil", "chicken and rice", etc.)
+
+Return STRICT JSON ONLY:
+{
+  "kind": "branded" | "single_food" | "mixed_meal",
+  "normalized_name": "string",
+  "quantity_description": "string|null"
+}`;
+
+  const stage0Resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        { role: "system", content: stage0Prompt },
+        { role: "user", content: description || "(no description)" }
+      ]
+    })
+  });
+
+  const stage0Data = await stage0Resp.json();
+  const stage0Content = stage0Data.choices?.[0]?.message?.content || "";
+  const stage0 = extractJson(stage0Content) || { kind: "mixed_meal", normalized_name: description, quantity_description: description };
+
+  /* ---------- Bypass Stage1 & Stage2 for branded or single ingredient foods ---------- */
+  if (stage0.kind === "branded" || stage0.kind === "single_food") {
+    const simplePrompt = `You return exact nutrition only.
+Rules:
+- Do NOT estimate weight
+- Do NOT apply mixed meal rules
+- Do NOT adjust calories/protein
+- Use canonical values or label values if branded
+- Multiply by quantity
+
+Return strict JSON:
+{
+  "calories": number,
+  "protein": number,
+  "carbs": number,
+  "fat": number,
+  "vitaminA": number,
+  "vitaminC": number,
+  "vitaminD": number,
+  "vitaminE": number,
+  "vitaminK": number,
+  "vitaminB12": number,
+  "iron": number,
+  "calcium": number,
+  "magnesium": number,
+  "zinc": number,
+  "water": number,
+  "sodium": number,
+  "potassium": number,
+  "chloride": number,
+  "fiber": number,
+  "ai_summary": "string",
+  "ai_foods": [{ "name": "string", "weight_g": number|null, "confidence": number }]
+}`;
+
+    const simpleResp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: "gpt-4o", temperature: 0, messages: [{ role: "system", content: simplePrompt }] })
+    });
+
+    const simpleData = await simpleResp.json();
+    const simpleRaw = simpleData.choices?.[0]?.message?.content || "";
+    const simpleParsed = extractJson(simpleRaw);
+
+    if (!simpleParsed) return res.status(500).json({ error: "Failed to parse simple food JSON" });
+
+    const nutrition = buildCompleteNutrition(simpleParsed);
+
+    return res.status(200).json({
+      ...nutrition,
+      ai_summary: simpleParsed.ai_summary || description,
+      ai_foods: simpleParsed.ai_foods || [ { name: stage0.normalized_name, weight_g: null, confidence: 1 } ]
+    });
+  }
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
 
