@@ -380,6 +380,128 @@ Return STRICT JSON ONLY:
   console.table(stage1.foods);
   console.log("✅ [STAGE1] Parsed JSON:", stage1);
 
+  /* ---------- Stage 1.5: image-only single item shortcut ---------- */
+  if (!description && stage1.foods && stage1.foods.length === 1) {
+    const onlyFood = stage1.foods[0] || {};
+    const qtyLabel = (
+      (onlyFood.weight_g ? `${safeNum(onlyFood.weight_g)}g ` : "") +
+      (onlyFood.name || "")
+    ).trim() || "1 serving";
+
+    const simplePromptImage = `You are a nutrition expert.
+You will receive the name of ONE food and its approximate quantity (for example: "330 ml Muscle Milk protein shake", "130g flaked light tuna").
+
+Rules:
+- Use typical nutrition database / label values for that exact food and quantity.
+- If it is a branded product (like Muscle Milk), base values on typical label information for that size.
+- NEVER return all zeros; if uncertain, give your best reasonable estimate.
+- Return totals for the entire quantity given.
+
+Return STRICT JSON ONLY:
+
+{
+  "calories": number,
+  "protein": number,
+  "carbs": number,
+  "fat": number,
+  "vitaminA": number,
+  "vitaminC": number,
+  "vitaminD": number,
+  "vitaminE": number,
+  "vitaminK": number,
+  "vitaminB12": number,
+  "iron": number,
+  "calcium": number,
+  "magnesium": number,
+  "zinc": number,
+  "water": number,
+  "sodium": number,
+  "potassium": number,
+  "chloride": number,
+  "fiber": number,
+  "ai_summary": "string",
+  "ai_foods": [{ "name": "string", "weight_g": number|null, "confidence": number }]
+}`;
+
+    console.log("📤 [IMAGE-BYPASS] qtyLabel:", qtyLabel);
+    console.log("📤 [IMAGE-BYPASS] simplePromptImage:", simplePromptImage);
+
+    const imageBypassMessages = [
+      { role: "system", content: simplePromptImage },
+      {
+        role: "assistant",
+        content:
+          "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown.",
+      },
+      {
+        role: "user",
+        content: `Food to analyze: ${qtyLabel}`,
+      },
+    ];
+
+    const imageSimpleResp = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          temperature: 0,
+          messages: imageBypassMessages,
+        }),
+      }
+    );
+
+    const imageSimpleData = (await imageSimpleResp.json()) as any;
+    console.log(
+      "📥 [IMAGE-BYPASS] Raw response:",
+      JSON.stringify(imageSimpleData, null, 2)
+    );
+
+    const imageSimpleRaw =
+      imageSimpleData.choices?.[0]?.message?.content || "";
+    console.log("📄 [IMAGE-BYPASS] Content:", imageSimpleRaw);
+
+    const imageSimpleParsed = extractJson(imageSimpleRaw);
+    console.log("✅ [IMAGE-BYPASS] Parsed JSON:", imageSimpleParsed);
+
+    if (!imageSimpleParsed) {
+      console.log(
+        "❌ [IMAGE-BYPASS] Failed to parse JSON, falling back to Stage2."
+      );
+      // fall through to pizza / Stage2
+    } else {
+      const imageNutrition = buildCompleteNutrition(imageSimpleParsed);
+      console.log("📊 [IMAGE-BYPASS] Built nutrition:", imageNutrition);
+
+      const displayName =
+        qtyLabel || onlyFood.name || description || "Food";
+
+      const responseBody = {
+        ...imageNutrition,
+        ai_summary:
+          imageSimpleParsed.ai_summary ||
+          stage1.summary ||
+          `Logged: ${displayName}`,
+        ai_foods:
+          imageSimpleParsed.ai_foods || [
+            {
+              name: displayName,
+              weight_g: safeNum(onlyFood.weight_g) || null,
+              confidence: onlyFood.confidence ?? 1,
+            },
+          ],
+      };
+
+      console.log("✅ [IMAGE-BYPASS] Final response:", responseBody);
+
+      return res.status(200).json(responseBody);
+    }
+  }
+
   /* ---------- Pizza special case ---------- */
   const combinedText =
     (
