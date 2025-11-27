@@ -152,7 +152,7 @@ Return STRICT JSON ONLY:
     })
   });
 
-  const stage0Data = await stage0Resp.json();
+  const stage0Data = await stage0Resp.json() as any;
   const stage0Content = stage0Data.choices?.[0]?.message?.content || "";
   const stage0 = extractJson(stage0Content) || { kind: "mixed_meal", normalized_name: description, quantity_description: description };
 
@@ -194,10 +194,17 @@ Return strict JSON:
     const simpleResp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: "gpt-4o", temperature: 0, messages: [{ role: "system", content: simplePrompt }] })
+      body: JSON.stringify({
+      model: "gpt-4o",
+      temperature: 0,
+      messages: [
+        { role: "system", content: simplePrompt },
+        { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." }
+      ]
+    })
     });
 
-    const simpleData = await simpleResp.json();
+    const simpleData = await simpleResp.json() as any;
     const simpleRaw = simpleData.choices?.[0]?.message?.content || "";
     const simpleParsed = extractJson(simpleRaw);
 
