@@ -231,10 +231,12 @@ Return strict JSON:
       body: JSON.stringify({
         model: "gpt-4o",
         temperature: 0,
-        messages: [
-          { role: "system", content: simplePrompt },
-          { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." }
-        ]
+       messages: [
+  { role: "system", content: simplePrompt },
+  { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." },
+  { role: "user", content: description }  // <<<< IMPORTANT
+]
+
       })
     });
 
