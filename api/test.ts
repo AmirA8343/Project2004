@@ -145,11 +145,11 @@ Return STRICT JSON ONLY:
     body: JSON.stringify({
       model: "gpt-4o-mini",
       temperature: 0,
-      messages: [
-      { role: "system", content: simplePrompt },
-      { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." },
-      { role: "user", content: description }
-    ]
+     messages: [
+  { role: "system", content: stage0Prompt },
+  { role: "user", content: description || "(no description)" }
+]
+
     })
   });
 
