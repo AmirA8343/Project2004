@@ -212,11 +212,18 @@ Return strict JSON:
 
     const nutrition = buildCompleteNutrition(simpleParsed);
 
-    return res.status(200).json({
-      ...nutrition,
-      ai_summary: simpleParsed.ai_summary || description,
-      ai_foods: simpleParsed.ai_foods || [ { name: stage0.normalized_name, weight_g: null, confidence: 1 } ]
-    });
+    const displayName =
+  stage0.quantity_description ||
+  stage0.normalized_name ||
+  description;
+
+return res.status(200).json({
+  ...nutrition,
+  ai_summary: simpleParsed.ai_summary || `Logged: ${displayName}`,
+  ai_foods: simpleParsed.ai_foods || [
+    { name: displayName, weight_g: null, confidence: 1 }
+  ]
+});
   }
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
