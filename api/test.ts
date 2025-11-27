@@ -82,6 +82,8 @@ Return STRICT JSON only:
     });
   }
 
+  console.log("📤 [PIZZA] Request messages:", JSON.stringify(messages, null, 2));
+
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -92,8 +94,13 @@ Return STRICT JSON only:
   });
 
   const data = (await resp.json()) as any;
+  console.log("📥 [PIZZA] Raw OpenAI response:", JSON.stringify(data, null, 2));
+
   const content: string = data.choices?.[0]?.message?.content ?? "";
+  console.log("📄 [PIZZA] Content:", content);
+
   const parsed = extractJson(content);
+  console.log("✅ [PIZZA] Parsed JSON:", parsed);
 
   if (!parsed) throw new Error("Pizza analysis failed");
 
@@ -103,6 +110,13 @@ Return STRICT JSON only:
   const totalFat = safeNum(parsed.fat_per_slice * parsed.slices);
 
   console.log("🍕 Pizza Summary:", parsed.summary);
+  console.log("🍕 Pizza totals:", {
+    totalCalories,
+    totalProtein,
+    totalCarbs,
+    totalFat,
+  });
+
   return {
     calories: totalCalories,
     protein: totalProtein,
@@ -121,10 +135,17 @@ Return STRICT JSON only:
 
 /* ---------- main handler ---------- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log("📩 Incoming request:", {
+    method: req.method,
+    body: req.body,
+  });
+
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   const { description = "", photoUrl } = req.body || {};
+  console.log("📝 Description:", description);
+  console.log("🖼 Photo URL:", photoUrl);
 
   /* ---------- Stage 0: classify meal before any analysis ---------- */
   const stage0Prompt = `You classify the meal into one of three categories:
@@ -139,26 +160,34 @@ Return STRICT JSON ONLY:
   "quantity_description": "string|null"
 }`;
 
+  console.log("📤 [STAGE0] Prompt:", stage0Prompt);
+
   const stage0Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       temperature: 0,
-     messages: [
-  { role: "system", content: stage0Prompt },
-  { role: "user", content: description || "(no description)" }
-]
-
+      messages: [
+        { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." },
+        { role: "user", content: description }
+      ]
     })
   });
 
   const stage0Data = await stage0Resp.json() as any;
+  console.log("📥 [STAGE0] Raw response:", JSON.stringify(stage0Data, null, 2));
+
   const stage0Content = stage0Data.choices?.[0]?.message?.content || "";
+  console.log("📄 [STAGE0] Content:", stage0Content);
+
   const stage0 = extractJson(stage0Content) || { kind: "mixed_meal", normalized_name: description, quantity_description: description };
+  console.log("✅ [STAGE0] Parsed classification:", stage0);
 
   /* ---------- Bypass Stage1 & Stage2 for branded or single ingredient foods ---------- */
   if (stage0.kind === "branded" || stage0.kind === "single_food") {
+    console.log("🚀 [BYPASS] Activated for kind:", stage0.kind, "description:", description);
+
     const simplePrompt = `You return exact nutrition only.
 Rules:
 - Do NOT estimate weight
@@ -192,40 +221,56 @@ Return strict JSON:
   "ai_foods": [{ "name": "string", "weight_g": number|null, "confidence": number }]
 }`;
 
+    console.log("📤 [BYPASS] simplePrompt:", simplePrompt);
+
     const simpleResp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({
-      model: "gpt-4o",
-      temperature: 0,
-      messages: [
-        { role: "system", content: simplePrompt },
-        { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." }
-      ]
-    })
+        model: "gpt-4o",
+        temperature: 0,
+        messages: [
+          { role: "system", content: simplePrompt },
+          { role: "assistant", content: "Return ONLY valid JSON. No explanations. No text outside JSON. No markdown." }
+        ]
+      })
     });
 
     const simpleData = await simpleResp.json() as any;
-    const simpleRaw = simpleData.choices?.[0]?.message?.content || "";
-    const simpleParsed = extractJson(simpleRaw);
+    console.log("📥 [BYPASS] Raw response:", JSON.stringify(simpleData, null, 2));
 
-    if (!simpleParsed) return res.status(500).json({ error: "Failed to parse simple food JSON" });
+    const simpleRaw = simpleData.choices?.[0]?.message?.content || "";
+    console.log("📄 [BYPASS] Content:", simpleRaw);
+
+    const simpleParsed = extractJson(simpleRaw);
+    console.log("✅ [BYPASS] Parsed JSON:", simpleParsed);
+
+    if (!simpleParsed) {
+      console.log("❌ [BYPASS] Failed to parse simple food JSON");
+      return res.status(500).json({ error: "Failed to parse simple food JSON" });
+    }
 
     const nutrition = buildCompleteNutrition(simpleParsed);
+    console.log("📊 [BYPASS] Built nutrition:", nutrition);
 
     const displayName =
-  stage0.quantity_description ||
-  stage0.normalized_name ||
-  description;
+      stage0.quantity_description ||
+      stage0.normalized_name ||
+      description;
 
-return res.status(200).json({
-  ...nutrition,
-  ai_summary: simpleParsed.ai_summary || `Logged: ${displayName}`,
-  ai_foods: simpleParsed.ai_foods || [
-    { name: displayName, weight_g: null, confidence: 1 }
-  ]
-});
+    const responseBody = {
+      ...nutrition,
+      ai_summary: simpleParsed.ai_summary || `Logged: ${displayName}`,
+      ai_foods: simpleParsed.ai_foods || [
+        { name: displayName, weight_g: null, confidence: 1 }
+      ]
+    };
+
+    console.log("✅ [BYPASS] Final response:", responseBody);
+
+    return res.status(200).json(responseBody);
   }
+
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
 
@@ -245,6 +290,8 @@ Return STRICT JSON ONLY:
 }
 `;
 
+  console.log("📤 [STAGE1] Prompt:", stage1Prompt);
+
   const stage1Msgs: any[] = [
     { role: "system", content: stage1Prompt },
     { role: "user", content: description || "(no description)" },
@@ -259,6 +306,8 @@ Return STRICT JSON ONLY:
     });
   }
 
+  console.log("📤 [STAGE1] Messages:", JSON.stringify(stage1Msgs, null, 2));
+
   const stage1Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -269,11 +318,16 @@ Return STRICT JSON ONLY:
   });
 
   const stage1Data = (await stage1Resp.json()) as any;
+  console.log("📥 [STAGE1] Raw response:", JSON.stringify(stage1Data, null, 2));
+
   const stage1Content: string = stage1Data.choices?.[0]?.message?.content ?? "";
+  console.log("📄 [STAGE1] Content:", stage1Content);
+
   const stage1 = extractJson(stage1Content) ?? { foods: [], summary: "" };
 
   console.log("🍲 AI Meal Summary:", stage1.summary || "(none)");
   console.table(stage1.foods);
+  console.log("✅ [STAGE1] Parsed JSON:", stage1);
 
   /* ---------- Pizza special case ---------- */
   const combinedText =
@@ -285,12 +339,16 @@ Return STRICT JSON ONLY:
       (stage1.foods || []).map((f: any) => f.name).join(" ")
     ).toLowerCase();
 
+  console.log("🔍 [PIZZA CHECK] combinedText:", combinedText);
+
   if (combinedText.includes("pizza")) {
+    console.log("🍕 [PIZZA] Detected pizza, running pizza script...");
     try {
       const pizzaResult = await runPizzaScript(photoUrl, description);
+      console.log("✅ [PIZZA] Result:", pizzaResult);
       return res.status(200).json(pizzaResult);
     } catch (err) {
-      console.error("❌ Pizza script failed:", err);
+      console.log("❌ [PIZZA] Pizza script failed:", err);
     }
   }
 
@@ -307,6 +365,9 @@ Return STRICT JSON ONLY:
       (sum: number, f: any) => sum + (Number(f.weight_g) || 0),
       0
     ) || 0;
+
+  console.log("📋 [STAGE2] foodList:", foodList);
+  console.log("⚖️ [STAGE2] totalWeight:", totalWeight);
 
   const stage2Prompt = `
 Estimate TOTAL nutrition for:
@@ -338,6 +399,8 @@ Return STRICT JSON ONLY with:
 }
 `;
 
+  console.log("📤 [STAGE2] Prompt:", stage2Prompt);
+
   const stage2Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -350,16 +413,23 @@ Return STRICT JSON ONLY with:
   });
 
   const stage2Data = (await stage2Resp.json()) as any;
+  console.log("📥 [STAGE2] Raw response:", JSON.stringify(stage2Data, null, 2));
+
   const stage2Content: string = stage2Data.choices?.[0]?.message?.content ?? "";
+  console.log("📄 [STAGE2] Content:", stage2Content);
+
   const parsed = extractJson(stage2Content);
+  console.log("✅ [STAGE2] Parsed JSON:", parsed);
 
   if (!parsed)
     return res.status(500).json({ error: "Failed to parse nutrition JSON" });
 
   const nutrition = buildCompleteNutrition(parsed);
+  console.log("📊 [STAGE2] Built nutrition:", nutrition);
 
   /* ---------- Stage 3: humanize summary ---------- */
   let friendlySummary = stage1.summary || "";
+  console.log("📝 [STAGE3] Original summary:", friendlySummary);
 
   if (friendlySummary) {
     const tonePrompt = `
@@ -377,6 +447,8 @@ Original:
 "${friendlySummary}"
 `;
 
+    console.log("📤 [STAGE3] Tone prompt:", tonePrompt);
+
     try {
       const toneResp = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -389,16 +461,24 @@ Original:
       });
 
       const toneData = await toneResp.json() as any;
+      console.log("📥 [STAGE3] Raw tone response:", JSON.stringify(toneData, null, 2));
+
       const newText = toneData.choices?.[0]?.message?.content?.trim();
+      console.log("📄 [STAGE3] Tone content:", newText);
+
       if (newText) friendlySummary = newText;
     } catch (err) {
-      console.warn("⚠️ Tone rewrite failed, returning original summary.");
+      console.log("⚠️ [STAGE3] Tone rewrite failed, returning original summary.", err);
     }
   }
 
-  return res.status(200).json({
+  const finalResponse = {
     ...nutrition,
     ai_summary: friendlySummary,
     ai_foods: stage1.foods || [],
-  });
+  };
+
+  console.log("✅ [FINAL] Response body:", finalResponse);
+
+  return res.status(200).json(finalResponse);
 }
