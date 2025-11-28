@@ -156,6 +156,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - "single_food": single ingredient with clear quantity ("2 eggs", "150g chicken", "1 banana")
 - "mixed_meal": multiple ingredients or cooked with extras ("eggs with oil", "chicken and rice", etc.)
 
+Always prefer "branded" when you see clear brand or packaged product names.
+Always prefer "single_food" when there is exactly one ingredient and its quantity is clear.
+
 Return STRICT JSON ONLY:
 {
   "kind": "branded" | "single_food" | "mixed_meal",
@@ -210,14 +213,17 @@ Return STRICT JSON ONLY:
     );
 
     const simplePrompt = `You are a nutrition expert.
-You will receive a user message describing ONE food and its quantity (for example: "2 eggs", "150g chicken", "1 banana", or a branded product like "1 bottle Muscle Milk").
+You will receive a user message describing ONE food and its quantity
+(for example: "2 eggs", "150g chicken", "1 banana",
+or a branded product like "1 bottle Muscle Milk 330 ml").
 
-Rules:
-- Use typical nutrition database / label values for that exact food and quantity.
-- Do NOT estimate or mention weight; just use canonical typical values.
-- Do NOT treat it as a mixed meal.
-- NEVER return all zeros. If uncertain, use your best reasonable estimate.
-- Multiply by the quantity described in the user message.
+Rule override:
+- If the item is branded, packaged, canned, bottled, or a single-ingredient food with a clear quantity:
+  - Use nutrition label or canonical database values for that exact product and quantity.
+  - Do NOT estimate or infer weight from images or assumptions.
+  - Do NOT apply mixed-meal logic.
+  - NEVER return all zeros; if uncertain, use a reasonable typical value for that product/portion.
+- Always multiply by the quantity given in the message.
 
 Return STRICT JSON ONLY:
 
@@ -329,6 +335,15 @@ Return STRICT JSON ONLY:
   const stage1Prompt = `
 You are an expert nutrition vision analyst.
 
+Rule override:
+- If the image clearly shows a single branded, packaged, canned, or bottled product
+  (e.g., "Muscle Milk 330 ml", "canned tuna 130 g", "protein shake bottle")
+  or a single-ingredient item with a clear quantity ("2 eggs", "1 banana"):
+  - Focus on correctly naming the product and capturing any explicit quantity visible (ml, g, etc.).
+  - Do NOT invent extra foods or sides.
+  - You may still estimate weight_g based on the text or known typical package size,
+    but nutrition is NOT computed in this stage.
+
 Identify all visible foods and estimate their weights in grams.
 Use visual reasoning and realistic densities.
 Return STRICT JSON ONLY:
@@ -389,13 +404,15 @@ Return STRICT JSON ONLY:
     ).trim() || "1 serving";
 
     const simplePromptImage = `You are a nutrition expert.
-You will receive the name of ONE food and its approximate quantity (for example: "330 ml Muscle Milk protein shake", "130g flaked light tuna").
+You will receive the name of ONE food and its approximate quantity
+(for example: "330 ml Muscle Milk protein shake", "130g flaked light tuna").
 
-Rules:
-- Use typical nutrition database / label values for that exact food and quantity.
-- If it is a branded product (like Muscle Milk), base values on typical label information for that size.
-- NEVER return all zeros; if uncertain, give your best reasonable estimate.
-- Return totals for the entire quantity given.
+Rule override:
+- If this is a branded, packaged, canned, or bottled product, or a single-ingredient food with clear quantity:
+  - Base nutrition on typical product label or canonical database values for that exact product and size.
+  - Do NOT re-estimate weight from images.
+  - Do NOT treat it as part of a mixed meal.
+  - NEVER return all zeros; if you are uncertain, use a reasonable typical label value.
 
 Return STRICT JSON ONLY:
 
@@ -543,6 +560,14 @@ Return STRICT JSON ONLY:
   console.log("⚖️ [STAGE2] totalWeight:", totalWeight);
 
   const stage2Prompt = `
+Rule override:
+If the foods/description correspond to a single branded, packaged, canned, bottled, or single-ingredient item with a known quantity
+(e.g. "330 ml Muscle Milk", "130g flaked light tuna", "2 eggs", "1 banana"):
+- Use canonical or label-based nutrition values for that exact amount.
+- Do NOT estimate calories/macros from visual weight or serving size guesses.
+- Do NOT treat it as a mixed meal.
+- NEVER return all zeros; if uncertain, choose reasonable typical values.
+
 Estimate TOTAL nutrition for:
 ${foodList}
 Estimated total weight: ${totalWeight} g
