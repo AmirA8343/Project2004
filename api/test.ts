@@ -44,6 +44,21 @@ const extractJson = (text: string) => {
   return null;
 };
 
+/**
+ * NEW: extract a quantity with unit from any text, e.g. "330 ml", "130g", "11 oz", "2 slices", etc.
+ * Used to avoid turning "330 ml" into "330g" when building qtyLabel.
+ */
+const extractQuantityFromText = (text?: string | null): string | null => {
+  if (!text) return null;
+  const match = text.match(
+    /(\d+(?:\.\d+)?)\s*(ml|mL|l|L|liters?|litres?|fl\s*oz|oz|g|grams?|kg|lb|pounds?|cups?|cup|tbsp|tablespoons?|tsp|teaspoons?|slices?|slice|piece|pieces|servings?|serving|bottle|bottles?|can|cans?)/i
+  );
+  if (!match) return null;
+  const value = match[1];
+  const unit = match[2];
+  return `${value} ${unit}`;
+};
+
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
   "calories": number,
@@ -400,9 +415,19 @@ Return STRICT JSON ONLY:
   /* ---------- Stage 1.5: image-only single item shortcut ---------- */
   if (!description && stage1.foods && stage1.foods.length === 1) {
     const onlyFood = stage1.foods[0] || {};
+
+    // 🔹 NEW: try to grab "330 ml", "130 g", etc. from summary / name / description
+    const quantityFromText =
+      extractQuantityFromText(stage1.summary) ||
+      extractQuantityFromText(onlyFood.name) ||
+      extractQuantityFromText(description);
+
     const qtyLabel = (
-      (onlyFood.weight_g ? `${safeNum(onlyFood.weight_g)}g ` : "") +
-      (onlyFood.name || "")
+      (quantityFromText
+        ? `${quantityFromText} `
+        : onlyFood.weight_g
+        ? `${safeNum(onlyFood.weight_g)} g `
+        : "") + (onlyFood.name || "")
     ).trim() || "1 serving";
 
     const simplePromptImage = `You are a nutrition expert.
@@ -556,7 +581,6 @@ Return STRICT JSON ONLY with:
 
 ${NUTRITION_JSON_SCHEMA.replace(
   /,\s*"ai_summary":[\s\S]*/m,
-  // For Stage2 we don't strictly need ai_summary/ai_foods, but keeping schema consistent is fine.
   `"calories": number,
   "protein": number,
   "carbs": number,
