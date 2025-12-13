@@ -3,6 +3,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 /* ---------- helpers ---------- */
+const languageInstruction = (lang: string) => {
+  if (!lang || lang === "en") return "";
+  return `All natural language text (ai_summary, summaries, descriptions) MUST be written in ${lang}.`;
+};
+
 const safeNum = (v: any) => (Number.isFinite(+v) ? Math.round(+v) : 0);
 
 const buildCompleteNutrition = (d: any = {}) => ({
@@ -85,9 +90,16 @@ const NUTRITION_JSON_SCHEMA = `{
 }`;
 
 /* ---------- pizza-specific subroutine ---------- */
-async function runPizzaScript(photoUrl?: string, description?: string) {
-  const prompt = `
+async function runPizzaScript(
+  photoUrl?: string,
+  description?: string,
+  language: string = "en"
+) 
+ {
+const prompt = `
 You are a pizza nutrition expert.
+${languageInstruction(language)}
+
 Analyze the given image and/or description to identify:
 - number of slices visible
 - pizza type (thin crust, regular, deep dish)
@@ -185,8 +197,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
 
-  const { description = "", photoUrl } = req.body || {};
-  console.log("📝 Description:", description);
+ const {
+  description = "",
+  photoUrl,
+  language = "en",
+} = req.body || {};
+console.log("🌍 Language:", language);
+
+   console.log("📝 Description:", description);
   console.log("🖼 Photo URL:", photoUrl);
 
   /* ---------- Stage 0: classify meal before any analysis ---------- */
@@ -251,7 +269,9 @@ Return STRICT JSON ONLY:
       description
     );
 
-    const simplePrompt = `You are a nutrition expert.
+ const simplePrompt = `You are a nutrition expert.
+${languageInstruction(language)}
+
 You will receive a user message describing ONE food and its quantity
 (for example: "2 eggs", "150g chicken", "1 banana",
 or a branded product like "1 bottle Muscle Milk 330 ml").
@@ -351,6 +371,7 @@ ${NUTRITION_JSON_SCHEMA}`;
   /* ---------- Stage 1: identify foods & weights (hybrid correction) ---------- */
   const stage1Prompt = `
 You are an expert nutrition vision analyst.
+${languageInstruction(language)}
 
 Rule override:
 - If the image clearly shows a single branded, packaged, canned, or bottled product
@@ -430,7 +451,9 @@ Return STRICT JSON ONLY:
         : "") + (onlyFood.name || "")
     ).trim() || "1 serving";
 
-    const simplePromptImage = `You are a nutrition expert.
+  const simplePromptImage = `You are a nutrition expert.
+${languageInstruction(language)}
+
 You will receive the name of ONE food and its approximate quantity
 (for example: "330 ml Muscle Milk protein shake", "130g flaked light tuna").
 
@@ -539,7 +562,8 @@ ${NUTRITION_JSON_SCHEMA}`;
   if (combinedText.includes("pizza")) {
     console.log("🍕 [PIZZA] Detected pizza, running pizza script...");
     try {
-      const pizzaResult = await runPizzaScript(photoUrl, description);
+    const pizzaResult = await runPizzaScript(photoUrl, description, language);
+
       console.log("✅ [PIZZA] Result:", pizzaResult);
       return res.status(200).json(pizzaResult);
     } catch (err) {
@@ -639,8 +663,10 @@ ${NUTRITION_JSON_SCHEMA.replace(
   console.log("📝 [STAGE3] Original summary:", friendlySummary);
 
   if (friendlySummary) {
-    const tonePrompt = `
+  const tonePrompt = `
 Rewrite the following meal description in a clean, professional, human tone.
+${languageInstruction(language)}
+
 
 Guidelines:
 - Remove robotic language such as "the image shows" or "likely part of"
