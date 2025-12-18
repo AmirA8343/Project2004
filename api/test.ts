@@ -64,6 +64,23 @@ const extractQuantityFromText = (text?: string | null): string | null => {
   return `${value} ${unit}`;
 };
 
+const normalizeAiFoods = (
+  foods: any[],
+  fallbackName: string
+) => {
+  if (!Array.isArray(foods) || foods.length === 0) {
+    return [{ name: fallbackName, weight_g: null, confidence: 1 }];
+  }
+
+  return foods.map((f) => ({
+    name: f.name || fallbackName,
+    // 🔒 Never allow undefined; null explicitly means “serving-based”
+    weight_g: Number.isFinite(f.weight_g) ? Math.round(f.weight_g) : null,
+    confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
+  }));
+};
+
+
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
   "calories": number,
@@ -353,15 +370,15 @@ ${NUTRITION_JSON_SCHEMA}`;
       description ||
       "Food";
 
-    const responseBody = {
-      ...nutrition,
-      ai_summary:
-        simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-      ai_foods:
-        simpleParsed.ai_foods || [
-          { name: displayName, weight_g: null, confidence: 1 },
-        ],
-    };
+const responseBody = {
+  ...nutrition,
+  ai_summary:
+    simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
+  ai_foods: normalizeAiFoods(
+    simpleParsed.ai_foods,
+    displayName
+  ),
+};
 
     console.log("✅ [BYPASS] Final response:", responseBody);
 
