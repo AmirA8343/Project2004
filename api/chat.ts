@@ -58,6 +58,21 @@ const extractQuantityFromText = (text?: string | null): string | null => {
   const unit = match[2];
   return `${value} ${unit}`;
 };
+const normalizeAiFoods = (
+  foods: any[],
+  fallbackName: string
+) => {
+  if (!Array.isArray(foods) || foods.length === 0) {
+    return [{ name: fallbackName, weight_g: null, confidence: 1 }];
+  }
+
+  return foods.map((f) => ({
+    name: f.name || fallbackName,
+    // 🔒 Never allow undefined; null explicitly means “serving-based”
+    weight_g: Number.isFinite(f.weight_g) ? Math.round(f.weight_g) : null,
+    confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
+  }));
+};
 
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
