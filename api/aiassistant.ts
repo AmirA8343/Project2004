@@ -6,6 +6,43 @@ const client = new OpenAI({
 });
 
 /* ---------- helpers ---------- */
+
+const dailyNutritionRules = `
+DAILY NUTRITION GOALS — FRONTEND CONTRACT (DO NOT VIOLATE)
+
+You MUST calculate DAILY nutrition goals exactly as defined below.
+These rules are the single source of truth and MUST match the frontend.
+
+DO NOT modify, optimize, rebalance, or personalize beyond these rules.
+
+MACROS:
+- Protein (g) = bodyweight_kg × 2.0
+- Carbohydrates (g) = (targetCalories × 0.5) ÷ 4
+- Fat (g) = (targetCalories × 0.3) ÷ 9
+- Calories = targetCalories (unchanged)
+- All macro values MUST be rounded to whole numbers (same as frontend Math.round).
+
+MICRONUTRIENTS:
+- Vitamin A (µg): male 900, female 700
+- Vitamin C (mg): male 90, female 75
+- Vitamin D (µg): 15
+- Vitamin E (mg): 15
+- Vitamin K (µg): male 120, female 90
+- Vitamin B12 (µg): 2.4
+- Iron (mg): male 8, female 18
+- Calcium (mg): age > 50 → 1200, else 1000
+- Magnesium (mg): male 420, female 320
+- Zinc (mg): male 11, female 8
+- Fiber (g): male 38, female 25
+- Water (ml): male 3700, female 2700
+- Sodium (mg): 2300
+- Potassium (mg): 3500
+- Chloride (mg): 2300
+
+If your output does not match these formulas, you MUST recalculate before responding.
+`;
+
+
 const languageInstruction = (lang?: string) => {
   if (!lang) return "";
   return `Respond in ${lang}. If the user writes in another language, respond in the user's language instead.`;
@@ -149,7 +186,11 @@ GENERAL:
 - Ask for missing info only when required
 `;
 
-    const messages: any[] = [{ role: "system", content: systemPrompt }];
+   const messages: any[] = [
+  { role: "system", content: systemPrompt },
+  { role: "system", content: dailyNutritionRules },
+];
+
 
     // Make intent deterministic (helps a lot)
     if (isMealPlan) {
