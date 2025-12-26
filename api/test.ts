@@ -296,7 +296,9 @@ or a branded product like "1 bottle Muscle Milk 330 ml").
 Rule override:
 - If the item is branded, packaged, canned, bottled, or a single-ingredient food with a clear quantity:
   - Use nutrition label or canonical database values for that exact product and quantity.
-  - Do NOT estimate or infer weight from images or assumptions.
+- Do NOT estimate when exact nutrition label or canonical database values are available.
+- If exact values are NOT available, use your general nutrition knowledge to estimate.
+
   - Do NOT apply mixed-meal logic.
   - NEVER return all zeros; if uncertain, use a reasonable typical value for that product/portion.
 - Always multiply by the quantity given in the message.
@@ -610,7 +612,9 @@ Rule override:
 If the foods/description correspond to a single branded, packaged, canned, bottled, or single-ingredient item with a known quantity
 (e.g. "330 ml Muscle Milk", "130g flaked light tuna", "2 eggs", "1 banana"):
 - Use canonical or label-based nutrition values for that exact amount.
-- Do NOT estimate calories/macros from visual weight or serving size guesses.
+- Do NOT estimate when exact nutrition data is available.
+- If exact data is unavailable, estimate using standard nutrition knowledge.
+
 - Do NOT treat it as a mixed meal.
 - NEVER return all zeros; if uncertain, choose reasonable typical values.
 
