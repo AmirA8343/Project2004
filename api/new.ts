@@ -894,18 +894,37 @@ Original:
     }
   }
 
-  const finalResponse = {
-    ...nutrition,
-    ai_summary: friendlySummary,
-ai_foods: normalizeAiFoods(
-  stage1.foods.map(normalizeChickenName),
-  stage0.normalized_name,
-  Number(stage0.quantity_description) || null
-),
+const finalResponse = {
+  calories: roundForUI(nutrition.calories),
+  protein: roundForUI(nutrition.protein),
+  carbs: roundForUI(nutrition.carbs),
+  fat: roundForUI(nutrition.fat),
 
+  vitaminA: nutrition.vitaminA,
+  vitaminC: nutrition.vitaminC,
+  vitaminD: nutrition.vitaminD,
+  vitaminE: nutrition.vitaminE,
+  vitaminK: nutrition.vitaminK,
+  vitaminB12: nutrition.vitaminB12,
+  iron: nutrition.iron,
+  calcium: nutrition.calcium,
+  magnesium: nutrition.magnesium,
+  zinc: nutrition.zinc,
+  water: nutrition.water,
+  sodium: nutrition.sodium,
+  potassium: nutrition.potassium,
+  chloride: nutrition.chloride,
+  fiber: nutrition.fiber,
 
+  ai_summary: friendlySummary,
 
-  };
+  ai_foods: normalizeAiFoods(
+    stage1.foods.map(normalizeChickenName),
+    stage0.normalized_name,
+    Number(stage0.quantity_description) || null
+  ),
+};
+
 
   console.log("✅ [FINAL] Response body:", finalResponse);
 
