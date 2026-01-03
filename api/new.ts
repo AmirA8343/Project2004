@@ -3,33 +3,84 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 /* ---------- helpers ---------- */
+
+const COOKING_YIELD: Record<string, number> = {
+  grilled: 0.75,
+  boiled: 0.8,
+  baked: 0.78,
+  fried: 0.7,
+};
+
+const COUNT_BASED_FOODS = [
+  "egg",
+  "eggs",
+  "banana",
+  "apple",
+  "orange",
+  "slice",
+];
+
+
+function normalizeChickenName(food: any) {
+  if (!food?.name) return food;
+
+  const name = food.name.toLowerCase();
+
+  if (
+    name.includes("chicken") &&
+    !name.includes("breast")
+  ) {
+    // Fitness-safe default
+    return {
+      ...food,
+      name: "chicken breast",
+      confidence: Math.min((food.confidence ?? 0.8) + 0.1, 1),
+    };
+  }
+
+  return food;
+}
+
+
+function getRawEquivalentGrams(food: any) {
+  if (food.cook_state !== "cooked") return food.weight_g;
+  const factor = COOKING_YIELD[food.cook_method || "grilled"] ?? 0.75;
+  return food.weight_g / factor;
+}
+
+
 const languageInstruction = (lang: string) => {
   if (!lang || lang === "en") return "";
   return `All natural language text (ai_summary, summaries, descriptions) MUST be written in ${lang}.`;
 };
 
-const safeNum = (v: any) => (Number.isFinite(+v) ? Math.round(+v) : 0);
+const toNumber = (v: any) =>
+  Number.isFinite(+v) ? +v : null;
+
+const roundForUI = (v: any) =>
+  Number.isFinite(+v) ? Math.round(+v) : 0;
+
 
 const buildCompleteNutrition = (d: any = {}) => ({
-  protein: safeNum(d.protein),
-  calories: safeNum(d.calories),
-  carbs: safeNum(d.carbs ?? d.carbohydrates),
-  fat: safeNum(d.fat),
-  vitaminA: safeNum(d.vitaminA),
-  vitaminC: safeNum(d.vitaminC),
-  vitaminD: safeNum(d.vitaminD),
-  vitaminE: safeNum(d.vitaminE),
-  vitaminK: safeNum(d.vitaminK),
-  vitaminB12: safeNum(d.vitaminB12),
-  iron: safeNum(d.iron),
-  calcium: safeNum(d.calcium),
-  magnesium: safeNum(d.magnesium),
-  zinc: safeNum(d.zinc),
-  water: safeNum(d.water),
-  sodium: safeNum(d.sodium),
-  potassium: safeNum(d.potassium),
-  chloride: safeNum(d.chloride),
-  fiber: safeNum(d.fiber),
+  protein: toNumber(d.protein),
+  calories: toNumber(d.calories),
+  carbs: toNumber(d.carbs ?? d.carbohydrates),
+  fat:toNumber(d.fat),
+  vitaminA: toNumber(d.vitaminA),
+  vitaminC: toNumber(d.vitaminC),
+  vitaminD: toNumber(d.vitaminD),
+  vitaminE: toNumber(d.vitaminE),
+  vitaminK: toNumber(d.vitaminK),
+  vitaminB12: toNumber(d.vitaminB12),
+  iron: toNumber(d.iron),
+  calcium: toNumber(d.calcium),
+  magnesium:toNumber(d.magnesium),
+  zinc: toNumber(d.zinc),
+  water:toNumber(d.water),
+  sodium: toNumber(d.sodium),
+  potassium: toNumber(d.potassium),
+  chloride: toNumber(d.chloride),
+  fiber: toNumber(d.fiber),
 });
 
 const extractJson = (text: string) => {
@@ -48,6 +99,33 @@ const extractJson = (text: string) => {
   }
   return null;
 };
+
+
+function assertValidPhotoUrl(photoUrl: any) {
+  if (!photoUrl) return; // photo is optional in your flow
+
+  if (typeof photoUrl !== "string") {
+    throw new Error("photoUrl must be a string");
+  }
+
+  // Only allow local file URLs or https URLs
+  if (
+    !photoUrl.startsWith("file://") &&
+    !photoUrl.startsWith("https://")
+  ) {
+    throw new Error("Invalid photoUrl scheme");
+  }
+
+  // Block obvious injection vectors
+  if (
+    photoUrl.includes("javascript:") ||
+    photoUrl.includes("data:") ||
+    photoUrl.includes("<") ||
+    photoUrl.includes(">")
+  ) {
+    throw new Error("Unsafe photoUrl");
+  }
+}
 
 /**
  * NEW: extract a quantity with unit from any text, e.g. "330 ml", "130g", "11 oz", "2 slices", etc.
@@ -73,12 +151,24 @@ const normalizeAiFoods = (
     return [{ name: fallbackName, weight_g: null, confidence: 1 }];
   }
 
-  return foods.map((f) => ({
+ return foods.map((f) => {
+  const name = (f.name || fallbackName || "").toLowerCase();
+
+  const isCountBased = COUNT_BASED_FOODS.some((k) =>
+    name.includes(k)
+  );
+
+  return {
     name: f.name || fallbackName,
-    // 🔒 Never allow undefined; null explicitly means “serving-based”
-    weight_g: Number.isFinite(f.weight_g) ? Math.round(f.weight_g) : null,
+    weight_g: isCountBased ? null : (
+      Number.isFinite(+f.weight_g) ? +f.weight_g : null
+    ),
+    unit: isCountBased ? "piece" : "gram",
+    quantity: isCountBased ? null : null,
     confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
-  }));
+  };
+});
+
 };
 
 /** Shared schema text used in all nutrition prompts */
@@ -172,10 +262,10 @@ Return STRICT JSON only:
 
   if (!parsed) throw new Error("Pizza analysis failed");
 
-  const totalCalories = safeNum(parsed.calories_per_slice * parsed.slices);
-  const totalProtein = safeNum(parsed.protein_per_slice * parsed.slices);
-  const totalCarbs = safeNum(parsed.carbs_per_slice * parsed.slices);
-  const totalFat = safeNum(parsed.fat_per_slice * parsed.slices);
+  const totalCalories = toNumber(parsed.calories_per_slice * parsed.slices);
+  const totalProtein =toNumber(parsed.protein_per_slice * parsed.slices);
+  const totalCarbs = toNumber(parsed.carbs_per_slice * parsed.slices);
+  const totalFat =toNumber(parsed.fat_per_slice * parsed.slices);
 
   console.log("🍕 Pizza Summary:", parsed.summary);
   console.log("🍕 Pizza totals:", {
@@ -214,11 +304,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
 
- const {
+const {
   description = "",
   photoUrl,
   language = "en",
 } = req.body || {};
+
+try {
+  assertValidPhotoUrl(photoUrl); // 🔐 SECURITY CHECKPOINT
+} catch (err: any) {
+  console.log("❌ Invalid photoUrl:", err.message);
+  return res.status(400).json({ error: "Invalid photo URL" });
+}
+
 console.log("🌍 Language:", language);
 
    console.log("📝 Description:", description);
@@ -375,10 +473,11 @@ const responseBody = {
   ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-  ai_foods: normalizeAiFoods(
-    simpleParsed.ai_foods,
-    displayName
-  ),
+ ai_foods: normalizeAiFoods(
+  simpleParsed.ai_foods,
+  stage0.normalized_name
+),
+
 };
 
 
@@ -389,7 +488,21 @@ const responseBody = {
 
   /* ---------- Stage 1: identify foods & weights (hybrid correction) ---------- */
   const stage1Prompt = `
-You are an expert nutrition vision analyst.
+You are a visual portion estimation expert.
+IMPORTANT:
+This task is ONLY about estimating physical mass from appearance.
+
+- Ignore nutrition, calories, macros, and food databases
+- Do NOT think in terms of servings or per-100g values
+- Do NOT round to common portions (50g, 100g, 150g, 200g)
+- Precision is preferred over clean numbers
+- Decimals are allowed
+- Treat this like estimating weight on a kitchen scale
+- Avoid defaulting to common portion sizes.
+- Use round numbers only when the visual portion clearly supports it.
+
+
+
 ${languageInstruction(language)}
 
 Rule override:
@@ -401,13 +514,37 @@ Rule override:
   - You may still estimate weight_g based on the text or known typical package size,
     but nutrition is NOT computed in this stage.
 
+For each food:
+- Decide if it is RAW or COOKED
+- If cooked, identify method (grilled, boiled, fried, baked)
+- If unsure, set cook_state = "unknown"
+
+
 Identify all visible foods and estimate their weights in grams.
-Use visual reasoning and realistic densities.
+Chicken classification rules (MANDATORY):
+- If chicken appears boneless, lean, and skinless → name MUST be "chicken breast"
+- Use "chicken pieces" ONLY if bones, skin, or mixed cuts are clearly visible
+- Never default to "chicken pieces" when a specific cut is visually dominant
+
+Estimate weight using visual volume:
+- plate coverage
+- pile height
+- food thickness
+- bowl or plate size
+Assume a standard plate is ~26 cm diameter unless another size is visible.
+
 Return STRICT JSON ONLY:
 
 {
   "foods": [
-    { "name": "string", "weight_g": number, "confidence": number }
+    {
+  "name": "string",
+  "weight_g": number,
+  "cook_state": "raw" | "cooked" | "unknown",
+  "cook_method": "grilled" | "boiled" | "fried" | "baked" | null,
+  "confidence": number
+}
+
   ],
   "summary": "short, human-readable description of the meal and portion size"
 }
@@ -466,7 +603,7 @@ Return STRICT JSON ONLY:
       (quantityFromText
         ? `${quantityFromText} `
         : onlyFood.weight_g
-        ? `${safeNum(onlyFood.weight_g)} g `
+        ? `${toNumber(onlyFood.weight_g)} g `
         : "") + (onlyFood.name || "")
     ).trim() || "1 serving";
 
@@ -554,7 +691,7 @@ ${NUTRITION_JSON_SCHEMA}`;
           imageSimpleParsed.ai_foods || [
             {
               name: displayName,
-              weight_g: safeNum(onlyFood.weight_g) || null,
+              weight_g: toNumber(onlyFood.weight_g) || null,
               confidence: onlyFood.confidence ?? 1,
             },
           ],
@@ -594,15 +731,20 @@ ${NUTRITION_JSON_SCHEMA}`;
   const foodList =
     (stage1.foods && stage1.foods.length
       ? stage1.foods
-          .map((f: any) => `${safeNum(f.weight_g)}g ${f.name}`)
+         .map((f: any) => {
+  const rawG = getRawEquivalentGrams(f);
+  return `${rawG?.toFixed(1)}g raw ${f.name}`;
+})
+
           .join(", ")
       : description) || "(no foods detected)";
 
-  const totalWeight =
-    stage1.foods?.reduce(
-      (sum: number, f: any) => sum + (Number(f.weight_g) || 0),
-      0
-    ) || 0;
+const totalWeight =
+  stage1.foods?.reduce(
+    (sum: number, f: any) => sum + (getRawEquivalentGrams(f) || 0),
+    0
+  ) || 0;
+
 
   console.log("📋 [STAGE2] foodList:", foodList);
   console.log("⚖️ [STAGE2] totalWeight:", totalWeight);
@@ -738,7 +880,15 @@ Original:
   const finalResponse = {
     ...nutrition,
     ai_summary: friendlySummary,
-    ai_foods: stage1.foods || [],
+  ai_foods: stage1.foods.map((f: any) => {
+  const fixed = normalizeChickenName(f);
+  return {
+    ...fixed,
+    raw_equivalent_g: getRawEquivalentGrams(fixed),
+  };
+}),
+
+
   };
 
   console.log("✅ [FINAL] Response body:", finalResponse);
