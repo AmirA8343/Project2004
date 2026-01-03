@@ -147,31 +147,35 @@ const extractQuantityFromText = (text?: string | null): string | null => {
 
 const normalizeAiFoods = (
   foods: any[],
-  fallbackName: string
+  fallbackName: string,
+  quantity?: number | null
 ) => {
   if (!Array.isArray(foods) || foods.length === 0) {
-    return [{ name: fallbackName, weight_g: null, confidence: 1 }];
+    return [{
+      name: fallbackName,
+      weight_g: null,
+      unit: "piece",
+      quantity: quantity ?? null,
+      confidence: 1
+    }];
   }
 
- return foods.map((f) => {
-  const name = (f.name || fallbackName || "").toLowerCase();
+  return foods.map((f) => {
+    const name = (f.name || fallbackName || "").toLowerCase();
+    const isCountBased = COUNT_BASED_FOODS.some(k => name.includes(k));
 
-  const isCountBased = COUNT_BASED_FOODS.some((k) =>
-    name.includes(k)
-  );
-
-  return {
-    name: f.name || fallbackName,
-    weight_g: isCountBased ? null : (
-      Number.isFinite(+f.weight_g) ? +f.weight_g : null
-    ),
-    unit: isCountBased ? "piece" : "gram",
-    quantity: isCountBased ? null : null, // quantity stays textual
-    confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
-  };
-});
-
+    return {
+      name: f.name || fallbackName,
+      weight_g: isCountBased ? null : (
+        Number.isFinite(+f.weight_g) ? +f.weight_g : null
+      ),
+      unit: isCountBased ? "piece" : "gram",
+      quantity: isCountBased ? quantity ?? null : null,
+      confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
+    };
+  });
 };
+
 
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
@@ -477,8 +481,10 @@ const responseBody = {
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
 ai_foods: normalizeAiFoods(
   simpleParsed.ai_foods,
-  stage0.normalized_name
+  stage0.normalized_name,
+  Number(stage0.quantity_description) || null
 ),
+
 
 };
 
