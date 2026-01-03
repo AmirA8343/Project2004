@@ -11,43 +11,6 @@ const COOKING_YIELD: Record<string, number> = {
   fried: 0.7,
 };
 
-function normalizeQuantity(q: any) {
-  if (!Number.isFinite(+q)) return null;
-  return Math.max(1, Math.round(+q));
-}
-
-
-const COUNT_BASED_FOODS = [
-  "egg",
-  "eggs",
-  "banana",
-  "apple",
-  "orange",
-  "slice",
-];
-
-
-function normalizeChickenName(food: any) {
-  if (!food?.name) return food;
-
-  const name = food.name.toLowerCase();
-
-  if (
-    name.includes("chicken") &&
-    !name.includes("breast")
-  ) {
-    // Fitness-safe default
-    return {
-      ...food,
-      name: "chicken breast",
-      confidence: Math.min((food.confidence ?? 0.8) + 0.1, 1),
-    };
-  }
-
-  return food;
-}
-
-
 function getRawEquivalentGrams(food: any) {
   if (food.cook_state !== "cooked") return food.weight_g;
   const factor = COOKING_YIELD[food.cook_method || "grilled"] ?? 0.75;
@@ -151,36 +114,20 @@ const extractQuantityFromText = (text?: string | null): string | null => {
 
 const normalizeAiFoods = (
   foods: any[],
-  fallbackName: string,
-  quantity?: number | null
+  fallbackName: string
 ) => {
   if (!Array.isArray(foods) || foods.length === 0) {
-    return [{
-      name: fallbackName,
-      weight_g: null,
-      unit: "piece",
-      quantity: quantity ?? null,
-      confidence: 1
-    }];
+    return [{ name: fallbackName, weight_g: null, confidence: 1 }];
   }
 
-  return foods.map((f) => {
-    const name = (f.name || fallbackName || "").toLowerCase();
-    const isCountBased = COUNT_BASED_FOODS.some(k => name.includes(k));
+  return foods.map((f) => ({
+    name: f.name || fallbackName,
+    // 🔒 Never allow undefined; null explicitly means “serving-based”
+   weight_g: Number.isFinite(+f.weight_g) ? +f.weight_g : null,
 
-    return {
-      name: f.name || fallbackName,
-      weight_g: isCountBased ? null : (
-        Number.isFinite(+f.weight_g) ? +f.weight_g : null
-      ),
-      unit: isCountBased ? "piece" : "gram",
-     quantity: isCountBased ? normalizeQuantity(quantity) : null,
-
-      confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
-    };
-  });
+    confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
+  }));
 };
-
 
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
@@ -481,39 +428,19 @@ ${NUTRITION_JSON_SCHEMA}`;
       description ||
       "Food";
 const responseBody = {
-  calories: roundForUI(nutrition.calories),
-  protein: roundForUI(nutrition.protein),
-  carbs: roundForUI(nutrition.carbs),
-  fat: roundForUI(nutrition.fat),
-
-  vitaminA: nutrition.vitaminA,
-  vitaminC: nutrition.vitaminC,
-  vitaminD: nutrition.vitaminD,
-  vitaminE: nutrition.vitaminE,
-  vitaminK: nutrition.vitaminK,
-  vitaminB12: nutrition.vitaminB12,
-  iron: nutrition.iron,
-  calcium: nutrition.calcium,
-  magnesium: nutrition.magnesium,
-  zinc: nutrition.zinc,
-  water: nutrition.water,
-  sodium: nutrition.sodium,
-  potassium: nutrition.potassium,
-  chloride: nutrition.chloride,
-  fiber: nutrition.fiber,
-
+  ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-
   ai_foods: normalizeAiFoods(
     simpleParsed.ai_foods,
-    stage0.normalized_name,
-    Number(stage0.quantity_description) || null
+    displayName
   ),
 };
 
-return res.status(200).json(responseBody);
 
+    console.log("✅ [BYPASS] Final response:", responseBody);
+
+    return res.status(200).json(responseBody);
   }
 
   /* ---------- Stage 1: identify foods & weights (hybrid correction) ---------- */
@@ -551,11 +478,6 @@ For each food:
 
 
 Identify all visible foods and estimate their weights in grams.
-Chicken classification rules (MANDATORY):
-- If chicken appears boneless, lean, and skinless → name MUST be "chicken breast"
-- Use "chicken pieces" ONLY if bones, skin, or mixed cuts are clearly visible
-- Never default to "chicken pieces" when a specific cut is visually dominant
-
 Estimate weight using visual volume:
 - plate coverage
 - pile height
@@ -711,45 +633,25 @@ ${NUTRITION_JSON_SCHEMA}`;
       const displayName =
         qtyLabel || onlyFood.name || description || "Food";
 
-    const responseBody = {
-  calories: roundForUI(imageNutrition.calories),
-  protein: roundForUI(imageNutrition.protein),
-  carbs: roundForUI(imageNutrition.carbs),
-  fat: roundForUI(imageNutrition.fat),
+      const responseBody = {
+        ...imageNutrition,
+        ai_summary:
+          imageSimpleParsed.ai_summary ||
+          stage1.summary ||
+          `Logged: ${displayName}`,
+        ai_foods:
+          imageSimpleParsed.ai_foods || [
+            {
+              name: displayName,
+              weight_g: toNumber(onlyFood.weight_g) || null,
+              confidence: onlyFood.confidence ?? 1,
+            },
+          ],
+      };
 
-  vitaminA: imageNutrition.vitaminA,
-  vitaminC: imageNutrition.vitaminC,
-  vitaminD: imageNutrition.vitaminD,
-  vitaminE: imageNutrition.vitaminE,
-  vitaminK: imageNutrition.vitaminK,
-  vitaminB12: imageNutrition.vitaminB12,
-  iron: imageNutrition.iron,
-  calcium: imageNutrition.calcium,
-  magnesium: imageNutrition.magnesium,
-  zinc: imageNutrition.zinc,
-  water: imageNutrition.water,
-  sodium: imageNutrition.sodium,
-  potassium: imageNutrition.potassium,
-  chloride: imageNutrition.chloride,
-  fiber: imageNutrition.fiber,
+      console.log("✅ [IMAGE-BYPASS] Final response:", responseBody);
 
-  ai_summary:
-    imageSimpleParsed.ai_summary ||
-    stage1.summary ||
-    `Logged: ${displayName}`,
-
-  ai_foods:
-    imageSimpleParsed.ai_foods || [
-      {
-        name: displayName,
-        weight_g: Math.round(toNumber(onlyFood.weight_g) ?? 0),
-        confidence: onlyFood.confidence ?? 1,
-      },
-    ],
-};
-
-return res.status(200).json(responseBody);
-
+      return res.status(200).json(responseBody);
     }
   }
 
@@ -781,14 +683,10 @@ return res.status(200).json(responseBody);
   const foodList =
     (stage1.foods && stage1.foods.length
       ? stage1.foods
-        .map((f: any) => {
-  if (COUNT_BASED_FOODS.some(k => f.name?.toLowerCase().includes(k))) {
-    return `${normalizeQuantity(stage0.quantity_description) ?? 1} ${f.name}`;
-  }
+         .map((f: any) => {
   const rawG = getRawEquivalentGrams(f);
   return `${rawG?.toFixed(1)}g raw ${f.name}`;
 })
-
 
           .join(", ")
       : description) || "(no foods detected)";
@@ -931,37 +829,15 @@ Original:
     }
   }
 
-const finalResponse = {
-  calories: roundForUI(nutrition.calories),
-  protein: roundForUI(nutrition.protein),
-  carbs: roundForUI(nutrition.carbs),
-  fat: roundForUI(nutrition.fat),
+  const finalResponse = {
+    ...nutrition,
+    ai_summary: friendlySummary,
+    ai_foods: stage1.foods.map((f: any) => ({
+  ...f,
+  raw_equivalent_g: getRawEquivalentGrams(f),
+})),
 
-  vitaminA: nutrition.vitaminA,
-  vitaminC: nutrition.vitaminC,
-  vitaminD: nutrition.vitaminD,
-  vitaminE: nutrition.vitaminE,
-  vitaminK: nutrition.vitaminK,
-  vitaminB12: nutrition.vitaminB12,
-  iron: nutrition.iron,
-  calcium: nutrition.calcium,
-  magnesium: nutrition.magnesium,
-  zinc: nutrition.zinc,
-  water: nutrition.water,
-  sodium: nutrition.sodium,
-  potassium: nutrition.potassium,
-  chloride: nutrition.chloride,
-  fiber: nutrition.fiber,
-
-  ai_summary: friendlySummary,
-
-  ai_foods: normalizeAiFoods(
-    stage1.foods.map(normalizeChickenName),
-    stage0.normalized_name,
-    Number(stage0.quantity_description) || null
-  ),
-};
-
+  };
 
   console.log("✅ [FINAL] Response body:", finalResponse);
 
