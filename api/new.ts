@@ -11,6 +11,39 @@ const COOKING_YIELD: Record<string, number> = {
   fried: 0.7,
 };
 
+
+
+function normalizeChickenName(food: any) {
+  if (!food?.name) return food;
+
+  const name = food.name.toLowerCase();
+
+  if (
+    name.includes("chicken") &&
+    !name.includes("breast")
+  ) {
+    // Fitness-safe default
+    return {
+      ...food,
+      name: "chicken breast",
+      confidence: Math.min((food.confidence ?? 0.8) + 0.1, 1),
+    };
+  }
+
+  return food;
+}
+
+
+const COUNT_BASED_FOODS = [
+  "egg",
+  "eggs",
+  "banana",
+  "apple",
+  "orange",
+  "slice",
+];
+
+
 function getRawEquivalentGrams(food: any) {
   if (food.cook_state !== "cooked") return food.weight_g;
   const factor = COOKING_YIELD[food.cook_method || "grilled"] ?? 0.75;
@@ -120,13 +153,24 @@ const normalizeAiFoods = (
     return [{ name: fallbackName, weight_g: null, confidence: 1 }];
   }
 
-  return foods.map((f) => ({
-    name: f.name || fallbackName,
-    // 🔒 Never allow undefined; null explicitly means “serving-based”
-   weight_g: Number.isFinite(+f.weight_g) ? +f.weight_g : null,
+ return foods.map((f) => {
+  const name = (f.name || fallbackName || "").toLowerCase();
 
+  const isCountBased = COUNT_BASED_FOODS.some((k) =>
+    name.includes(k)
+  );
+
+  return {
+    name: f.name || fallbackName,
+    weight_g: isCountBased ? null : (
+      Number.isFinite(+f.weight_g) ? +f.weight_g : null
+    ),
+    unit: isCountBased ? "piece" : "gram",
+    quantity: isCountBased ? null : null, // quantity stays textual
     confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
-  }));
+  };
+});
+
 };
 
 /** Shared schema text used in all nutrition prompts */
@@ -431,10 +475,11 @@ const responseBody = {
   ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-  ai_foods: normalizeAiFoods(
-    simpleParsed.ai_foods,
-    displayName
-  ),
+ai_foods: normalizeAiFoods(
+  simpleParsed.ai_foods,
+  stage0.normalized_name
+),
+
 };
 
 
@@ -478,6 +523,11 @@ For each food:
 
 
 Identify all visible foods and estimate their weights in grams.
+Chicken classification rules (MANDATORY):
+- If chicken appears boneless, lean, and skinless → name MUST be "chicken breast"
+- Use "chicken pieces" ONLY if bones, skin, or mixed cuts are clearly visible
+- Never default to "chicken pieces" when a specific cut is visually dominant
+
 Estimate weight using visual volume:
 - plate coverage
 - pile height
@@ -832,10 +882,14 @@ Original:
   const finalResponse = {
     ...nutrition,
     ai_summary: friendlySummary,
-    ai_foods: stage1.foods.map((f: any) => ({
-  ...f,
-  raw_equivalent_g: getRawEquivalentGrams(f),
-})),
+ai_foods: stage1.foods.map((f: any) => {
+  const fixed = normalizeChickenName(f);
+  return {
+    ...fixed,
+    raw_equivalent_g: getRawEquivalentGrams(fixed),
+  };
+}),
+
 
   };
 
