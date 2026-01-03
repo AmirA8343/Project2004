@@ -11,6 +11,12 @@ const COOKING_YIELD: Record<string, number> = {
   fried: 0.7,
 };
 
+function normalizeQuantity(q: any) {
+  if (!Number.isFinite(+q)) return null;
+  return Math.max(1, Math.round(+q));
+}
+
+
 const COUNT_BASED_FOODS = [
   "egg",
   "eggs",
@@ -145,31 +151,36 @@ const extractQuantityFromText = (text?: string | null): string | null => {
 
 const normalizeAiFoods = (
   foods: any[],
-  fallbackName: string
+  fallbackName: string,
+  quantity?: number | null
 ) => {
   if (!Array.isArray(foods) || foods.length === 0) {
-    return [{ name: fallbackName, weight_g: null, confidence: 1 }];
+    return [{
+      name: fallbackName,
+      weight_g: null,
+      unit: "piece",
+      quantity: quantity ?? null,
+      confidence: 1
+    }];
   }
 
- return foods.map((f) => {
-  const name = (f.name || fallbackName || "").toLowerCase();
+  return foods.map((f) => {
+    const name = (f.name || fallbackName || "").toLowerCase();
+    const isCountBased = COUNT_BASED_FOODS.some(k => name.includes(k));
 
-  const isCountBased = COUNT_BASED_FOODS.some((k) =>
-    name.includes(k)
-  );
+    return {
+      name: f.name || fallbackName,
+      weight_g: isCountBased ? null : (
+        Number.isFinite(+f.weight_g) ? +f.weight_g : null
+      ),
+      unit: isCountBased ? "piece" : "gram",
+     quantity: isCountBased ? normalizeQuantity(quantity) : null,
 
-  return {
-    name: f.name || fallbackName,
-    weight_g: isCountBased ? null : (
-      Number.isFinite(+f.weight_g) ? +f.weight_g : null
-    ),
-    unit: isCountBased ? "piece" : "gram",
-    quantity: isCountBased ? null : null,
-    confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
-  };
-});
-
+      confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
+    };
+  });
 };
+
 
 /** Shared schema text used in all nutrition prompts */
 const NUTRITION_JSON_SCHEMA = `{
@@ -473,10 +484,12 @@ const responseBody = {
   ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
- ai_foods: normalizeAiFoods(
+ai_foods: normalizeAiFoods(
   simpleParsed.ai_foods,
-  stage0.normalized_name
+  stage0.normalized_name,
+  Number(stage0.quantity_description) || null
 ),
+
 
 };
 
@@ -731,10 +744,14 @@ ${NUTRITION_JSON_SCHEMA}`;
   const foodList =
     (stage1.foods && stage1.foods.length
       ? stage1.foods
-         .map((f: any) => {
+        .map((f: any) => {
+  if (COUNT_BASED_FOODS.some(k => f.name?.toLowerCase().includes(k))) {
+    return `${normalizeQuantity(stage0.quantity_description) ?? 1} ${f.name}`;
+  }
   const rawG = getRawEquivalentGrams(f);
   return `${rawG?.toFixed(1)}g raw ${f.name}`;
 })
+
 
           .join(", ")
       : description) || "(no foods detected)";
@@ -880,13 +897,12 @@ Original:
   const finalResponse = {
     ...nutrition,
     ai_summary: friendlySummary,
-  ai_foods: stage1.foods.map((f: any) => {
-  const fixed = normalizeChickenName(f);
-  return {
-    ...fixed,
-    raw_equivalent_g: getRawEquivalentGrams(fixed),
-  };
-}),
+ai_foods: normalizeAiFoods(
+  stage1.foods.map(normalizeChickenName),
+  stage0.normalized_name,
+  Number(stage0.quantity_description) || null
+),
+
 
 
   };
