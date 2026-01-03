@@ -481,22 +481,39 @@ ${NUTRITION_JSON_SCHEMA}`;
       description ||
       "Food";
 const responseBody = {
-  ...nutrition,
+  calories: roundForUI(nutrition.calories),
+  protein: roundForUI(nutrition.protein),
+  carbs: roundForUI(nutrition.carbs),
+  fat: roundForUI(nutrition.fat),
+
+  vitaminA: nutrition.vitaminA,
+  vitaminC: nutrition.vitaminC,
+  vitaminD: nutrition.vitaminD,
+  vitaminE: nutrition.vitaminE,
+  vitaminK: nutrition.vitaminK,
+  vitaminB12: nutrition.vitaminB12,
+  iron: nutrition.iron,
+  calcium: nutrition.calcium,
+  magnesium: nutrition.magnesium,
+  zinc: nutrition.zinc,
+  water: nutrition.water,
+  sodium: nutrition.sodium,
+  potassium: nutrition.potassium,
+  chloride: nutrition.chloride,
+  fiber: nutrition.fiber,
+
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-ai_foods: normalizeAiFoods(
-  simpleParsed.ai_foods,
-  stage0.normalized_name,
-  Number(stage0.quantity_description) || null
-),
 
-
+  ai_foods: normalizeAiFoods(
+    simpleParsed.ai_foods,
+    stage0.normalized_name,
+    Number(stage0.quantity_description) || null
+  ),
 };
 
+return res.status(200).json(responseBody);
 
-    console.log("✅ [BYPASS] Final response:", responseBody);
-
-    return res.status(200).json(responseBody);
   }
 
   /* ---------- Stage 1: identify foods & weights (hybrid correction) ---------- */
@@ -694,25 +711,45 @@ ${NUTRITION_JSON_SCHEMA}`;
       const displayName =
         qtyLabel || onlyFood.name || description || "Food";
 
-      const responseBody = {
-        ...imageNutrition,
-        ai_summary:
-          imageSimpleParsed.ai_summary ||
-          stage1.summary ||
-          `Logged: ${displayName}`,
-        ai_foods:
-          imageSimpleParsed.ai_foods || [
-            {
-              name: displayName,
-              weight_g: toNumber(onlyFood.weight_g) || null,
-              confidence: onlyFood.confidence ?? 1,
-            },
-          ],
-      };
+    const responseBody = {
+  calories: roundForUI(imageNutrition.calories),
+  protein: roundForUI(imageNutrition.protein),
+  carbs: roundForUI(imageNutrition.carbs),
+  fat: roundForUI(imageNutrition.fat),
 
-      console.log("✅ [IMAGE-BYPASS] Final response:", responseBody);
+  vitaminA: imageNutrition.vitaminA,
+  vitaminC: imageNutrition.vitaminC,
+  vitaminD: imageNutrition.vitaminD,
+  vitaminE: imageNutrition.vitaminE,
+  vitaminK: imageNutrition.vitaminK,
+  vitaminB12: imageNutrition.vitaminB12,
+  iron: imageNutrition.iron,
+  calcium: imageNutrition.calcium,
+  magnesium: imageNutrition.magnesium,
+  zinc: imageNutrition.zinc,
+  water: imageNutrition.water,
+  sodium: imageNutrition.sodium,
+  potassium: imageNutrition.potassium,
+  chloride: imageNutrition.chloride,
+  fiber: imageNutrition.fiber,
 
-      return res.status(200).json(responseBody);
+  ai_summary:
+    imageSimpleParsed.ai_summary ||
+    stage1.summary ||
+    `Logged: ${displayName}`,
+
+  ai_foods:
+    imageSimpleParsed.ai_foods || [
+      {
+        name: displayName,
+        weight_g: Math.round(toNumber(onlyFood.weight_g) ?? 0),
+        confidence: onlyFood.confidence ?? 1,
+      },
+    ],
+};
+
+return res.status(200).json(responseBody);
+
     }
   }
 
