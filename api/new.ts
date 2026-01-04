@@ -4,12 +4,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 /* ---------- helpers ---------- */
 
-const COOKING_YIELD: Record<string, number> = {
-  grilled: 0.75,
-  boiled: 0.8,
-  baked: 0.78,
-  fried: 0.7,
-};
+
 
 
 
@@ -44,11 +39,7 @@ const COUNT_BASED_FOODS = [
 ];
 
 
-function getRawEquivalentGrams(food: any) {
-  if (food.cook_state !== "cooked") return food.weight_g;
-  const factor = COOKING_YIELD[food.cook_method || "grilled"] ?? 0.75;
-  return food.weight_g / factor;
-}
+
 
 
 const languageInstruction = (lang: string) => {
@@ -737,21 +728,29 @@ ${NUTRITION_JSON_SCHEMA}`;
 
   /* ---------- Stage 2: compute nutrition ---------- */
   const foodList =
-    (stage1.foods && stage1.foods.length
-      ? stage1.foods
-         .map((f: any) => {
-  const rawG = getRawEquivalentGrams(f);
-  return `${rawG?.toFixed(1)}g raw ${f.name}`;
-})
+  (stage1.foods && stage1.foods.length
+    ? stage1.foods
+        .map((f: any) => {
+          const state =
+            f.cook_state === "raw"
+              ? "raw"
+              : f.cook_state === "cooked"
+              ? "cooked"
+              : "prepared";
 
-          .join(", ")
-      : description) || "(no foods detected)";
+          const grams = Number.isFinite(+f.weight_g) ? +f.weight_g : 0;
+          return `${grams.toFixed(0)}g ${state} ${f.name}`;
+        })
+        .join(", ")
+    : description) || "(no foods detected)";
+
 
 const totalWeight =
   stage1.foods?.reduce(
-    (sum: number, f: any) => sum + (getRawEquivalentGrams(f) || 0),
+    (sum: number, f: any) => sum + (Number.isFinite(+f.weight_g) ? +f.weight_g : 0),
     0
   ) || 0;
+
 
 
   console.log("📋 [STAGE2] foodList:", foodList);
@@ -768,9 +767,16 @@ If the foods/description correspond to a single branded, packaged, canned, bottl
 - Do NOT treat it as a mixed meal.
 - NEVER return all zeros; if uncertain, choose reasonable typical values.
 
-Estimate TOTAL nutrition for:
+Estimate TOTAL nutrition for the foods AS THEY ARE SERVED (cooked vs raw matters):
 ${foodList}
-Estimated total weight: ${totalWeight} g
+Estimated total served weight: ${totalWeight} g
+
+IMPORTANT COOKING RULE:
+- If an item is labeled "cooked", use nutrition for cooked/served food portions.
+- If an item is labeled "raw", use nutrition for raw portions.
+- DO NOT convert cooked grams to raw grams.
+- DO NOT apply cooking-yield factors.
+
 
 Return STRICT JSON ONLY with:
 
