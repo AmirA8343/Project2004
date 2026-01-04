@@ -888,13 +888,20 @@ Original:
   const finalResponse = {
     ...nutrition,
     ai_summary: friendlySummary,
-ai_foods: stage1.foods.map((f: any) => {
-  const fixed = normalizeChickenName(f);
-  return {
-    ...fixed,
-    raw_equivalent_g: getRawEquivalentGrams(fixed),
-  };
-}),
+ai_foods: normalizeAiFoods(
+  stage1.foods.map((f: any) => {
+    const fixed = normalizeChickenName(f);
+
+    return {
+      ...fixed,
+      weight_g: Number.isFinite(+fixed.weight_g)
+        ? Math.round(+fixed.weight_g / 5) * 5 // keeps 115g, 120g, etc.
+        : null,
+    };
+  }),
+  description
+),
+
 
 
   };
