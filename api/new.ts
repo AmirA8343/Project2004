@@ -492,15 +492,29 @@ const nutrition = scaleNutritionByGrams(
       stage0.normalized_name ||
       description ||
       "Food";
+    
+    
+const isBranded = stage0.kind === "branded";
 const responseBody = {
   ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-ai_foods: normalizeAiFoods(
-  simpleParsed.ai_foods,
-  stage0.normalized_name,
-  Number(stage0.quantity_description) || null
-),
+ai_foods: isBranded
+  ? [
+      {
+        name: stage0.normalized_name || "Branded item",
+        weight_g: null,
+        unit: "serving",
+        quantity: stage0.quantity_description || "1 serving",
+        confidence: 1,
+      },
+    ]
+  : normalizeAiFoods(
+      simpleParsed.ai_foods,
+      stage0.normalized_name,
+      extractGrams(stage0.quantity_description)
+    ),
+
 
 
 };
