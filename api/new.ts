@@ -5,6 +5,26 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 /* ---------- helpers ---------- */
 
 
+function extractGrams(q?: string | null): number | null {
+  if (!q) return null;
+  const match = q.match(/(\d+(?:\.\d+)?)\s*g/i);
+  return match ? Number(match[1]) : null;
+}
+
+function scaleNutritionByGrams(nutrition: any, grams?: number | null) {
+  if (!grams || grams <= 0) return nutrition;
+
+  const factor = grams / 100;
+
+  return {
+    ...nutrition,
+    calories: nutrition.calories != null ? Math.round(nutrition.calories * factor) : null,
+    protein: nutrition.protein != null ? +(nutrition.protein * factor).toFixed(1) : null,
+    carbs: nutrition.carbs != null ? +(nutrition.carbs * factor).toFixed(1) : null,
+    fat: nutrition.fat != null ? +(nutrition.fat * factor).toFixed(1) : null,
+    fiber: nutrition.fiber != null ? +(nutrition.fiber * factor).toFixed(1) : null,
+  };
+}
 
 
 
@@ -458,7 +478,13 @@ ${NUTRITION_JSON_SCHEMA}`;
         .json({ error: "Failed to parse simple food JSON" });
     }
 
-    const nutrition = buildCompleteNutrition(simpleParsed);
+    const grams = extractGrams(stage0.quantity_description);
+
+const nutrition = scaleNutritionByGrams(
+  buildCompleteNutrition(simpleParsed),
+  grams
+);
+
     console.log("📊 [BYPASS] Built nutrition:", nutrition);
 
     const displayName =
