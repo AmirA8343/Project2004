@@ -545,7 +545,7 @@ const responseBody = {
             confidence: 1,
           },
         ]
- : normalizeAiFoods(
+: normalizeAiFoods(
     [
       {
         name: stage0.normalized_name,
@@ -556,6 +556,7 @@ const responseBody = {
     stage0.normalized_name,
     extractCount(stage0.quantity_description)
   )
+
 
   ).map(attachDisplay),
 };
