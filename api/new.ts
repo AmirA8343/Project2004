@@ -4,6 +4,29 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 /* ---------- helpers ---------- */
 
+
+function attachDisplay(food: any) {
+  if (typeof food.quantity === "string" && food.quantity.trim()) {
+    return { ...food, display: `${food.quantity} ${food.name}` };
+  }
+
+  if (food.unit === "piece" && Number.isFinite(food.quantity)) {
+    return {
+      ...food,
+      display: `${food.quantity} ${food.name}${food.quantity > 1 ? "s" : ""}`,
+    };
+  }
+
+  if (Number.isFinite(food.weight_g)) {
+    return {
+      ...food,
+      display: `${Math.round(food.weight_g)} g ${food.name}`,
+    };
+  }
+
+  return { ...food, display: food.name };
+}
+
 function extractCount(q?: string | null): number | null {
   if (!q) return null;
   const m = q.match(/(\d+)\s*(egg|eggs|banana|apple|orange|slice|pieces?)/i);
@@ -504,26 +527,26 @@ const responseBody = {
   ...nutrition,
   ai_summary:
     simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
-ai_foods: isBranded
-  ? [
-      {
-        name: stage0.normalized_name || "Branded item",
-        weight_g: null,
-        unit: "serving",
-        quantity: stage0.quantity_description || "1 serving",
-        confidence: 1,
-      },
-    ]
-  : normalizeAiFoods(
-  simpleParsed.ai_foods,
-  stage0.normalized_name,
-  extractCount(stage0.quantity_description)
-)
-,
 
-
-
+  ai_foods: (
+    isBranded
+      ? [
+          {
+            name: stage0.normalized_name || "Branded item",
+            weight_g: null,
+            unit: "serving",
+            quantity: stage0.quantity_description || "1 serving",
+            confidence: 1,
+          },
+        ]
+      : normalizeAiFoods(
+          simpleParsed.ai_foods,
+          stage0.normalized_name,
+          extractCount(stage0.quantity_description)
+        )
+  ).map(attachDisplay),
 };
+
 
 
     console.log("✅ [BYPASS] Final response:", responseBody);
@@ -726,21 +749,24 @@ ${NUTRITION_JSON_SCHEMA}`;
       const displayName =
         qtyLabel || onlyFood.name || description || "Food";
 
-      const responseBody = {
-        ...imageNutrition,
-        ai_summary:
-          imageSimpleParsed.ai_summary ||
-          stage1.summary ||
-          `Logged: ${displayName}`,
-        ai_foods:
-          imageSimpleParsed.ai_foods || [
-            {
-              name: displayName,
-              weight_g: toNumber(onlyFood.weight_g) || null,
-              confidence: onlyFood.confidence ?? 1,
-            },
-          ],
-      };
+     const responseBody = {
+  ...imageNutrition,
+  ai_summary:
+    imageSimpleParsed.ai_summary ||
+    stage1.summary ||
+    `Logged: ${displayName}`,
+
+  ai_foods: (
+    imageSimpleParsed.ai_foods || [
+      {
+        name: onlyFood.name || displayName,
+        weight_g: toNumber(onlyFood.weight_g) || null,
+        confidence: onlyFood.confidence ?? 1,
+      },
+    ]
+  ).map(attachDisplay),
+};
+
 
       console.log("✅ [IMAGE-BYPASS] Final response:", responseBody);
 
@@ -947,12 +973,13 @@ ai_foods: normalizeAiFoods(
     return {
       ...fixed,
       weight_g: Number.isFinite(+fixed.weight_g)
-        ? Math.round(+fixed.weight_g / 5) * 5 // keeps 115g, 120g, etc.
+        ? Math.round(+fixed.weight_g / 5) * 5
         : null,
     };
   }),
   description
-),
+).map(attachDisplay),
+
 
 
 
