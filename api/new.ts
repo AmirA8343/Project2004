@@ -194,7 +194,7 @@ const normalizeAiFoods = (
       name: fallbackName,
       weight_g: null,
       unit: "piece",
-      quantity: quantity ?? null,
+      quantity: quantity ?? 1, // ✅ default to 1
       confidence: 1
     }];
   }
@@ -203,13 +203,19 @@ const normalizeAiFoods = (
     const name = (f.name || fallbackName || "").toLowerCase();
     const isCountBased = COUNT_BASED_FOODS.some(k => name.includes(k));
 
+    // ✅ infer quantity if missing
+    const inferredQuantity =
+      Number.isFinite(quantity) ? quantity :
+      isCountBased ? 1 : null;
+
     return {
       name: f.name || fallbackName,
-      weight_g: isCountBased ? null : (
-        Number.isFinite(+f.weight_g) ? +f.weight_g : null
-      ),
+      weight_g:
+        !isCountBased && Number.isFinite(+f.weight_g)
+          ? +f.weight_g
+          : null,
       unit: isCountBased ? "piece" : "gram",
-      quantity: isCountBased ? quantity ?? null : null,
+      quantity: isCountBased ? inferredQuantity : null,
       confidence: Number.isFinite(f.confidence) ? f.confidence : 1,
     };
   });
