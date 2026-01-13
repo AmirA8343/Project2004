@@ -969,27 +969,32 @@ Original:
     }
   }
 
+  // 🔹 Infer quantity for count-based foods (eggs, bananas, etc.)
+const inferredCount = extractCount(
+  stage1.summary || description
+);
+
+
   const finalResponse = {
-    ...nutrition,
-    ai_summary: friendlySummary,
-ai_foods: normalizeAiFoods(
-  stage1.foods.map((f: any) => {
-    const fixed = normalizeChickenName(f);
+  ...nutrition,
+  ai_summary: friendlySummary,
 
-    return {
-      ...fixed,
-      weight_g: Number.isFinite(+fixed.weight_g)
-        ? Math.round(+fixed.weight_g / 5) * 5
-        : null,
-    };
-  }),
-  description
-).map(attachDisplay),
+  ai_foods: normalizeAiFoods(
+    stage1.foods.map((f: any) => {
+      const fixed = normalizeChickenName(f);
 
+      return {
+        ...fixed,
+        weight_g: Number.isFinite(+fixed.weight_g)
+          ? Math.round(+fixed.weight_g / 5) * 5
+          : null,
+      };
+    }),
+    description,
+    inferredCount
+  ).map(attachDisplay),
+};
 
-
-
-  };
 
   console.log("✅ [FINAL] Response body:", finalResponse);
 
