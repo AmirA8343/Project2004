@@ -526,13 +526,18 @@ const nutrition = scaleNutritionByGrams(
       stage0.normalized_name ||
       description ||
       "Food";
+
     
+const inferredCount =
+  extractCount(`${stage0.quantity_description ?? ""} ${stage0.normalized_name ?? ""}`) ||
+  extractCount(description) ||
+  null;
     
 const isBranded = stage0.kind === "branded";
+
 const responseBody = {
   ...nutrition,
-  ai_summary:
-    simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
+  ai_summary: simpleParsed.ai_summary || `Logged: ${displayName}`.trim(),
 
   ai_foods: (
     isBranded
@@ -545,21 +550,20 @@ const responseBody = {
             confidence: 1,
           },
         ]
-: normalizeAiFoods(
-    [
-      {
-        name: stage0.normalized_name,
-        weight_g: null,
-        confidence: 1,
-      },
-    ],
-    stage0.normalized_name,
-    extractCount(stage0.quantity_description)
-  )
-
-
+      : normalizeAiFoods(
+          [
+            {
+              name: stage0.normalized_name,
+              weight_g: null,
+              confidence: 1,
+            },
+          ],
+          stage0.normalized_name,
+          inferredCount
+        )
   ).map(attachDisplay),
 };
+
 
 
 
