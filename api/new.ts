@@ -4,6 +4,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 /* ---------- helpers ---------- */
 
+function extractCount(q?: string | null): number | null {
+  if (!q) return null;
+  const m = q.match(/(\d+)\s*(egg|eggs|banana|apple|orange|slice|pieces?)/i);
+  return m ? Number(m[1]) : null;
+}
 
 function extractGrams(q?: string | null): number | null {
   if (!q) return null;
@@ -510,10 +515,11 @@ ai_foods: isBranded
       },
     ]
   : normalizeAiFoods(
-      simpleParsed.ai_foods,
-      stage0.normalized_name,
-      extractGrams(stage0.quantity_description)
-    ),
+  simpleParsed.ai_foods,
+  stage0.normalized_name,
+  extractCount(stage0.quantity_description)
+)
+,
 
 
 
