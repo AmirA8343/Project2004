@@ -1,8 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const NUTRITIONIX_APP_ID = process.env.NUTRITIONIX_APP_ID;
-const NUTRITIONIX_APP_KEY = process.env.NUTRITIONIX_APP_KEY;
+
 
 /* -------------------------------------------------------------------------- */
 /*                                Type Helpers                                */
@@ -21,22 +20,27 @@ interface OpenFoodFactsProduct {
 interface OpenFoodFactsResponse {
   product?: OpenFoodFactsProduct;
 }
-interface NutritionixItem {
-  food_name?: string;
-  brand_name?: string;
-  serving_qty?: number;
-  serving_unit?: string;
-  nf_calories?: number;
-  nf_protein?: number;
-  nf_total_carbohydrate?: number;
-  nf_total_fat?: number;
-  nf_dietary_fiber?: number;
-  nf_sugars?: number;
-  nf_sodium?: number;
+
+function extractHumanUnit(servingSize?: string): string | null {
+  if (!servingSize) return null;
+
+  // examples:
+  // "25 chips (50 g)"
+  // "2 cookies (30 g)"
+  // "1 bar (40 g)"
+
+  const m = servingSize.match(/(\d+)\s*([a-zA-Z]+)/);
+  if (!m) return null;
+
+  const unit = m[2].toLowerCase();
+
+  // filter out metric units
+  if (["g", "gram", "grams", "ml", "l"].includes(unit)) return null;
+
+  return unit;
 }
-interface NutritionixResponse {
-  foods?: NutritionixItem[];
-}
+
+
 interface OpenAIResponse {
   choices?: { message?: { content?: string } }[];
 }
@@ -204,6 +208,8 @@ function buildCompleteNutrition(data: any = {}) {
     type: data.type || "unknown",
     servingSize: data.servingSize || "",
     baseAmount: safeNum(data.baseAmount),
+    servingUnitHuman: data.servingUnitHuman || null,
+
     baseUnit:
       data.baseUnit === "ml" || data.baseUnit === "g" || data.baseUnit === "portion"
         ? data.baseUnit : "g",
@@ -285,68 +291,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? n.sodium_100g * 1000 : undefined;
 
         const servingSizeOut = servingRaw || "100 g";
-        const baseUnit = servingSizeOut.includes("ml") ? "ml" : "g";
-        const baseAmount = safeNum(servingSizeOut.match(/[\d.]+/)?.[0]) || 100;
+
+        const humanUnit = extractHumanUnit(servingSizeOut);
+
+// numeric part before human unit (e.g. 25 chips)
+        const humanAmountMatch = servingSizeOut.match(/(\d+)\s*[a-zA-Z]+/);
+        const humanAmount = humanAmountMatch ? safeNum(humanAmountMatch[1]) : null;
+
+// grams/ml inside parentheses
+        const metricMatch = servingSizeOut.match(/\((\d+)\s*(g|ml)\)/i);
+        const metricAmount = metricMatch ? safeNum(metricMatch[1]) : null;
+        const metricUnit = metricMatch?.[2]?.toLowerCase();
+
+        const baseUnit = humanUnit ?? metricUnit ?? "g";
+        const baseAmount = humanUnit ? humanAmount : metricAmount ?? 100;
+
         const shouldScale = baseUnit === "ml" || baseUnit === "g";
 
-        const fromOpenFoodFacts = {
-          name, brand, source: "OpenFoodFacts",
-          type: baseUnit === "ml" ? "liquid" : "solid",
-          servingSize: servingSizeOut, baseAmount, baseUnit,
-          calories: shouldScale ? scalePerServing(caloriesPer100, servingSizeOut) : safeNum(caloriesPer100),
-          protein: shouldScale ? scalePerServing(proteinPer100, servingSizeOut) : safeNum(proteinPer100),
-          carbs: shouldScale ? scalePerServing(carbsPer100, servingSizeOut) : safeNum(carbsPer100),
-          fat: shouldScale ? scalePerServing(fatPer100, servingSizeOut) : safeNum(fatPer100),
-          fiber: shouldScale ? scalePerServing(fiberPer100, servingSizeOut) : safeNum(fiberPer100),
-          sugar: shouldScale ? scalePerServing(sugarsPer100, servingSizeOut) : safeNum(sugarsPer100),
-          sodium: shouldScale ? scalePerServing(sodiumPer100Mg, servingSizeOut) : safeNum(sodiumPer100Mg),
-        };
+     const fromOpenFoodFacts = {
+  name,
+  brand,
+  source: "OpenFoodFacts",
+  type: baseUnit === "ml" ? "liquid" : "solid",
+
+  servingSize: servingSizeOut,
+
+  baseAmount,                 // 25
+  baseUnit,                   // "chips"
+  servingUnitHuman: humanUnit, // "chips"
+
+  calories: scalePerServing(caloriesPer100, servingSizeOut),
+  protein: scalePerServing(proteinPer100, servingSizeOut),
+  carbs: scalePerServing(carbsPer100, servingSizeOut),
+  fat: scalePerServing(fatPer100, servingSizeOut),
+  fiber: scalePerServing(fiberPer100, servingSizeOut),
+  sugar: scalePerServing(sugarsPer100, servingSizeOut),
+  sodium: scalePerServing(sodiumPer100Mg, servingSizeOut),
+};
+
         return res.status(200).json(buildCompleteNutrition(fromOpenFoodFacts));
       }
     }
 
     /* -------------------------------- 2) Nutritionix ------------------------------- */
-    if (NUTRITIONIX_APP_ID && NUTRITIONIX_APP_KEY) {
-      const nutriResp = await fetch("https://trackapi.nutritionix.com/v2/search/item", {
-        method: "POST",
-        headers: {
-          "x-app-id": NUTRITIONIX_APP_ID,
-          "x-app-key": NUTRITIONIX_APP_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ upc: barcode }),
-      });
-      if (nutriResp.ok) {
-        const nutriData: NutritionixResponse = await nutriResp.json();
-        const item = nutriData?.foods?.[0];
-        if (item) {
-          const name = item.food_name || "";
-          const brand = item.brand_name || "";
-          const servingStr = `${item.serving_qty || 1} ${item.serving_unit || "portion"}`;
-          const guard = guardEdible({
-            name, brand, categories: "", categoriesTags: [], servingSize: servingStr, nutriments: {
-              "energy-kcal_100g": item.nf_calories,
-              proteins_100g: item.nf_protein,
-              carbohydrates_100g: item.nf_total_carbohydrate,
-              fat_100g: item.nf_total_fat,
-            }
-          });
-          if (!guard.isEdible)
-            return res.status(200).json({ error: "non_food", message: guard.reason });
-
-          const fromNutritionix = {
-            name, brand, source: "Nutritionix", type: "solid",
-            servingSize: servingStr, baseAmount: safeNum(item.serving_qty),
-            baseUnit: item.serving_unit || "portion",
-            calories: item.nf_calories, protein: item.nf_protein,
-            carbs: item.nf_total_carbohydrate, fat: item.nf_total_fat,
-            fiber: item.nf_dietary_fiber, sugar: item.nf_sugars, sodium: item.nf_sodium,
-          };
-          return res.status(200).json(buildCompleteNutrition(fromNutritionix));
-        }
-      }
-    }
-
+   
     /* ---------------------------------- 3) GPT ----------------------------------- */
     if (!OPENAI_API_KEY)
       return res.status(500).json({ error: "Missing OpenAI API key" });
