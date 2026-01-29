@@ -74,6 +74,42 @@ const detectMealPlanIntent = (text?: string) => {
   );
 };
 
+const isReasonableTarget = (value: number, min: number, max: number) =>
+  Number.isFinite(value) && value >= min && value <= max;
+
+const getTargetsInstruction = (targets?: any) => {
+  const calories = Number(targets?.calories);
+  const protein = Number(targets?.protein);
+  const carbs = Number(targets?.carbs);
+  const fat = Number(targets?.fat);
+
+  const valid =
+    isReasonableTarget(calories, 100, 10000) &&
+    isReasonableTarget(protein, 1, 500) &&
+    isReasonableTarget(carbs, 1, 1000) &&
+    isReasonableTarget(fat, 1, 300);
+
+  if (!valid) return null;
+
+  return `
+Use these exact daily nutrition targets as the single source of truth.
+Do NOT recalculate or modify them.
+
+Daily targets:
+
+Calories: ${Math.round(calories)}
+
+Protein: ${Math.round(protein)} g
+
+Carbs: ${Math.round(carbs)} g
+
+Fat: ${Math.round(fat)} g
+
+Generate breakfast, lunch, and dinner so that their totals are approximately equal to these values.
+Return all numbers as integers.
+`;
+};
+
 /* ---------- handler ---------- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -89,6 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       userPreferences,
       previousMealPlan,
       mode,
+      targets,
     } = req.body || {};
 
     if (!message && !isPhoto) {
@@ -114,6 +151,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (field === "allergies") return !combinedAllergies;
       return userPreferences?.[field] === undefined || userPreferences?.[field] === null || userPreferences?.[field] === "";
     });
+
+    const targetsInstruction = isMealPlanMode ? getTargetsInstruction(targets) : null;
+    const nutritionInstruction = targetsInstruction ?? dailyNutritionRules;
 
     const systemPrompt = isMealPlanMode
       ? `
@@ -261,7 +301,7 @@ GENERAL:
 
    const messages: any[] = [
   { role: "system", content: systemPrompt },
-  { role: "system", content: dailyNutritionRules },
+  { role: "system", content: nutritionInstruction },
 ];
 
 
