@@ -256,7 +256,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     /* ------------------------------- 1) OpenFoodFacts ------------------------------ */
     const offResp = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
     if (offResp.ok) {
-      const offData: OpenFoodFactsResponse = await offResp.json();
+      const offData = (await offResp.json()) as OpenFoodFactsResponse;
       const p = offData?.product;
       if (p) {
         const name = p.product_name || p.generic_name || "";
@@ -382,7 +382,7 @@ Respond ONLY with JSON containing:
       }),
     });
 
-    const gptJson: OpenAIResponse = await gptResp.json();
+    const gptJson = (await gptResp.json()) as OpenAIResponse;
     const content: string = gptJson?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJsonFromText(content);
     if (parsed?.error === "non_food")

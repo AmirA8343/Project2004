@@ -105,8 +105,10 @@ If unknown, return 0. Respond with JSON only.`;
       return res.status(resp.status).json({ error: `OpenAI API error ${resp.status}` });
     }
 
-    const data = await resp.json();
-    const content: string = data.choices?.[0]?.message?.content ?? "";
+    const data = (await resp.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const content: string = data?.choices?.[0]?.message?.content ?? "";
     console.log("🔎 OpenAI output:", content.slice(0, 200));
 
     const parsed = extractJsonFromText(content);
