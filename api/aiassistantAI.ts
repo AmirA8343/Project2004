@@ -74,6 +74,46 @@ const detectMealPlanIntent = (text?: string) => {
   );
 };
 
+const getAskedPreferenceFields = (history?: any[]): Set<string> => {
+  const asked = new Set<string>();
+  if (!history || !Array.isArray(history)) return asked;
+
+  const assistantText = history
+    .filter((item) => item?.role === "assistant")
+    .map((item) => String(item?.content ?? "").toLowerCase())
+    .join(" ");
+
+  if (!assistantText) return asked;
+
+  if (assistantText.includes("allerg")) asked.add("allergies");
+  if (
+    assistantText.includes("eating mode") ||
+    assistantText.includes("diet") ||
+    assistantText.includes("omnivore") ||
+    assistantText.includes("vegetarian") ||
+    assistantText.includes("vegan")
+  ) {
+    asked.add("eating_mode");
+  }
+  if (assistantText.includes("cooking style") || assistantText.includes("cook")) {
+    asked.add("cooking_style");
+  }
+  if (assistantText.includes("protein") && assistantText.includes("gap")) {
+    asked.add("protein_gap");
+  }
+  if (
+    assistantText.includes("cultural") ||
+    assistantText.includes("cuisine") ||
+    assistantText.includes("middle eastern") ||
+    assistantText.includes("mediterranean") ||
+    assistantText.includes("asian")
+  ) {
+    asked.add("cultural_foods");
+  }
+
+  return asked;
+};
+
 const isReasonableTarget = (value: number, min: number, max: number) =>
   Number.isFinite(value) && value >= min && value <= max;
 
@@ -178,6 +218,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         effectiveUserPreferences?.[field] === ""
       );
     });
+    const askedFields = getAskedPreferenceFields(history);
+    const missingPreferencesFiltered = missingPreferences.filter(
+      (field) => !askedFields.has(field)
+    );
 
     const targetsInstruction = isMealPlanMode ? getTargetsInstruction(targets) : null;
     const nutritionInstruction = targetsInstruction ?? dailyNutritionRules;
@@ -244,7 +288,9 @@ If the user changes preferences in chat and you are returning JSON, include "upd
 If you must ask a clarifying question first, do NOT include JSON.
 
 Missing preference fields: ${missingPreferences.join(", ") || "none"}.
-If any preferences are missing, ask a brief question to collect them (one question only).
+Missing preference fields (not asked yet): ${missingPreferencesFiltered.join(", ") || "none"}.
+If any preferences are missing and have NOT been asked yet, ask a brief question to collect them (one question only).
+If a preference was already asked and the user did not answer, do NOT ask it again — proceed with a best-effort plan.
 `
       : `
 You are FitMacro Coach — a friendly, practical fitness & nutrition assistant.
