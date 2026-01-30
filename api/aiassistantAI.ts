@@ -197,6 +197,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const effectiveUserProfile = userProfile ?? profile;
     const effectiveUserPreferences = userPreferences ?? preferences;
     const effectivePreviousMealPlan = previousMealPlan ?? previousPlan;
+    console.log("🧪 AI meal_plan mode:", isMealPlanMode);
+    console.log("🧪 AI prefs keys:", Object.keys(effectiveUserPreferences ?? {}));
+    console.log("🧪 AI prev plan provided:", !!effectivePreviousMealPlan);
+    console.log("🧪 AI targets provided:", !!targets);
 
     const combinedAllergies =
       typeof userAllergies === "string" && userAllergies.trim()
@@ -222,6 +226,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const missingPreferencesFiltered = missingPreferences.filter(
       (field) => !askedFields.has(field)
     );
+    console.log("🧪 AI missing prefs:", missingPreferences);
+    console.log("🧪 AI missing prefs (not asked):", missingPreferencesFiltered);
 
     const targetsInstruction = isMealPlanMode ? getTargetsInstruction(targets) : null;
     const nutritionInstruction = targetsInstruction ?? dailyNutritionRules;
