@@ -211,7 +211,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "allergies",
       "eating_mode",
       "cooking_style",
-      "protein_gap",
       "cultural_foods",
     ];
     const missingPreferences = requiredPreferenceFields.filter((field) => {
@@ -307,6 +306,7 @@ Ask ONLY these questions (one at a time) and only once per user:
 Allergies are the only field you may re-ask if unclear or missing. Be strict until allergy info is clear.
 All other questions must be asked at most once; if unanswered or unclear, do NOT ask again and proceed with a best-effort plan.
 If allergies are clear and you already asked the optional questions (or choose not to), generate the meal plan without further questions.
+If targets or profile data are provided, use them to produce the best possible plan even if some optional answers are missing.
 `
       : `
 You are FitMacro Coach — a friendly, practical fitness & nutrition assistant.
