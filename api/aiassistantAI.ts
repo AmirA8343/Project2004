@@ -273,14 +273,32 @@ MEAL PLAN JSON SHAPE
 {
   "type": "meal_plan",
   "date": "YYYY-MM-DD",
-  "meals": {
-    "breakfast": { "name": string, "calories": number, "protein": number, "carbs": number, "fat": number },
-    "lunch": { ... },
-    "dinner": { ... }
-  },
+  "entries": [
+    {
+      "id": string,
+      "time": "HH:MM",
+      "title": "Breakfast" | "Lunch" | "Dinner" | "Snack",
+      "items": [
+        {
+          "name": string,
+          "amount": string,
+          "calories": number,
+          "protein": number,
+          "carbs": number,
+          "fat": number
+        }
+      ]
+    }
+  ],
   "total": { "calories": number, "protein": number, "carbs": number, "fat": number },
   "updatedPreferences": optional object
 }
+
+MEAL PLAN RULES
+- Include 3 main meals and 1–2 snacks.
+- Provide realistic daily times (e.g. 08:00, 11:00, 14:00, 17:00, 20:00).
+- Items must include concrete amounts like "150 g chicken breast".
+- Sum of all items across all entries must approximately match total.
 
 All numbers MUST be numbers (not strings).
 Calories and macros must be realistic.
