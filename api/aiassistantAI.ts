@@ -223,9 +223,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     });
     const askedFields = getAskedPreferenceFields(history);
-    const missingPreferencesFiltered = missingPreferences.filter(
-      (field) => !askedFields.has(field)
-    );
+    const missingPreferencesFiltered = missingPreferences.filter((field) => {
+      if (field === "allergies") return true;
+      return !askedFields.has(field);
+    });
     console.log("🧪 AI missing prefs:", missingPreferences);
     console.log("🧪 AI missing prefs (not asked):", missingPreferencesFiltered);
 
@@ -295,8 +296,17 @@ If you must ask a clarifying question first, do NOT include JSON.
 
 Missing preference fields: ${missingPreferences.join(", ") || "none"}.
 Missing preference fields (not asked yet): ${missingPreferencesFiltered.join(", ") || "none"}.
-If any preferences are missing and have NOT been asked yet, ask a brief question to collect them (one question only).
-If a preference was already asked and the user did not answer, do NOT ask it again — proceed with a best-effort plan.
+Ask ONLY these questions (one at a time) and only once per user:
+- Allergies / hard restrictions (safety-critical)
+- Eating mode (omnivore / vegetarian / vegan)
+- Cooking style / time (simple/quick vs. more involved)
+- Eating context (home vs. eating out)
+- Cultural cuisine preference
+- Today's change (training day, travel, higher protein)
+
+Allergies are the only field you may re-ask if unclear or missing. Be strict until allergy info is clear.
+All other questions must be asked at most once; if unanswered or unclear, do NOT ask again and proceed with a best-effort plan.
+If allergies are clear and you already asked the optional questions (or choose not to), generate the meal plan without further questions.
 `
       : `
 You are FitMacro Coach — a friendly, practical fitness & nutrition assistant.
