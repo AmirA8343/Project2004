@@ -226,6 +226,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (field === "allergies") return true;
       return !askedFields.has(field);
     });
+    const hasAllergiesAnswer = Boolean(combinedAllergies);
+    const shouldForcePlan =
+      isMealPlanMode &&
+      missingPreferencesFiltered.length === 0 &&
+      hasAllergiesAnswer;
     console.log("🧪 AI missing prefs:", missingPreferences);
     console.log("🧪 AI missing prefs (not asked):", missingPreferencesFiltered);
 
@@ -325,6 +330,7 @@ Allergies are the only field you may re-ask if unclear or missing. Be strict unt
 All other questions must be asked at most once; if unanswered or unclear, do NOT ask again and proceed with a best-effort plan.
 If allergies are clear and you already asked the optional questions (or choose not to), generate the meal plan without further questions.
 If targets or profile data are provided, use them to produce the best possible plan even if some optional answers are missing.
+If missing preference fields (not asked yet) is "none" and allergies are clear, you MUST output the FINAL meal plan JSON now and MUST NOT ask more questions.
 `
       : `
 You are FitMacro Coach — a friendly, practical fitness & nutrition assistant.
@@ -410,6 +416,13 @@ GENERAL:
   { role: "system", content: systemPrompt },
   { role: "system", content: nutritionInstruction },
 ];
+    if (shouldForcePlan) {
+      messages.push({
+        role: "system",
+        content:
+          "All required questions are answered. Do NOT ask any more questions. Output the FINAL meal plan JSON now.",
+      });
+    }
 
 
     if (!isMealPlanMode) {
