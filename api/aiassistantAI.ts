@@ -110,6 +110,23 @@ Return all numbers as integers.
 `;
 };
 
+const extractJsonFromText = (text: string): any | null => {
+  if (!text) return null;
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch?.[1]) {
+    try {
+      return JSON.parse(fenceMatch[1]);
+    } catch {}
+  }
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      return JSON.parse(objMatch[0]);
+    } catch {}
+  }
+  return null;
+};
+
 /* ---------- handler ---------- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -124,6 +141,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       userProfile,
       userPreferences,
       previousMealPlan,
+      profile,
+      preferences,
+      previousPlan,
       mode,
       targets,
     } = req.body || {};
@@ -134,11 +154,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const isMealPlanMode = mode === "meal_plan";
     const todayISO = new Date().toISOString().slice(0, 10);
+    const effectiveUserProfile = userProfile ?? profile;
+    const effectiveUserPreferences = userPreferences ?? preferences;
+    const effectivePreviousMealPlan = previousMealPlan ?? previousPlan;
 
     const combinedAllergies =
       typeof userAllergies === "string" && userAllergies.trim()
         ? userAllergies.trim()
-        : userPreferences?.allergies ?? "";
+        : effectiveUserPreferences?.allergies ?? "";
 
     const requiredPreferenceFields = [
       "allergies",
@@ -149,7 +172,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ];
     const missingPreferences = requiredPreferenceFields.filter((field) => {
       if (field === "allergies") return !combinedAllergies;
-      return userPreferences?.[field] === undefined || userPreferences?.[field] === null || userPreferences?.[field] === "";
+      return (
+        effectiveUserPreferences?.[field] === undefined ||
+        effectiveUserPreferences?.[field] === null ||
+        effectiveUserPreferences?.[field] === ""
+      );
     });
 
     const targetsInstruction = isMealPlanMode ? getTargetsInstruction(targets) : null;
@@ -160,7 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 You are FitMacro Meal Plan Coach — a calm, practical daily meal plan assistant.
 
 ${languageInstruction(language)}
-${profileInstruction(userProfile)}
+${profileInstruction(effectiveUserProfile)}
 
 MODE: meal_plan (STRICT)
 Today is ${todayISO}.
@@ -180,7 +207,7 @@ Saved preferences (may be empty): ${JSON.stringify(userPreferences ?? {})}
 User allergies (may be empty): ${combinedAllergies || "none provided"}
 
 PREVIOUS PLAN (if any)
-${previousMealPlan ? `Previous meal plan: ${JSON.stringify(previousMealPlan)}` : "No previous meal plan provided."}
+${effectivePreviousMealPlan ? `Previous meal plan: ${JSON.stringify(effectivePreviousMealPlan)}` : "No previous meal plan provided."}
 
 If a previous plan exists:
 - Reference it.
@@ -348,8 +375,13 @@ GENERAL:
       temperature: 0.6,
     });
 
+    const rawContent = completion.choices[0].message.content ?? "";
+    const parsed = extractJsonFromText(rawContent);
+    if (parsed && typeof parsed === "object") {
+      return res.status(200).json(parsed);
+    }
     return res.status(200).json({
-      reply: completion.choices[0].message.content,
+      reply: rawContent,
     });
   } catch (error) {
     console.error("AI Assistant Error:", error);
