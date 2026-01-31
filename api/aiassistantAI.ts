@@ -228,16 +228,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const effectiveLanguage = language ?? appLanguage;
     const effectiveUserProfile = userProfile ?? profile;
     const effectiveUserPreferences = userPreferences ?? preferences;
+    const normalizedPreferences =
+      effectiveUserPreferences && typeof effectiveUserPreferences === "object"
+        ? { ...(effectiveUserPreferences as Record<string, unknown>) }
+        : {};
+    if (
+      normalizedPreferences &&
+      !normalizedPreferences["cultural_foods"] &&
+      normalizedPreferences["culturalCuisine"]
+    ) {
+      normalizedPreferences["cultural_foods"] =
+        normalizedPreferences["culturalCuisine"];
+    }
+    if (
+      normalizedPreferences &&
+      !normalizedPreferences["cooking_style"] &&
+      normalizedPreferences["cookingStyle"]
+    ) {
+      normalizedPreferences["cooking_style"] =
+        normalizedPreferences["cookingStyle"];
+    }
+    if (
+      normalizedPreferences &&
+      !normalizedPreferences["eating_mode"] &&
+      normalizedPreferences["eatingMode"]
+    ) {
+      normalizedPreferences["eating_mode"] =
+        normalizedPreferences["eatingMode"];
+    }
+    if (
+      normalizedPreferences &&
+      !normalizedPreferences["allergies"] &&
+      (normalizedPreferences["allergy"] ||
+        normalizedPreferences["food_allergies"] ||
+        normalizedPreferences["allergyInfo"])
+    ) {
+      normalizedPreferences["allergies"] =
+        normalizedPreferences["allergy"] ??
+        normalizedPreferences["food_allergies"] ??
+        normalizedPreferences["allergyInfo"];
+    }
     const effectivePreviousMealPlan = previousMealPlan ?? previousPlan;
     console.log("🧪 AI meal_plan mode:", isMealPlanMode);
     console.log("🧪 AI prefs keys:", Object.keys(effectiveUserPreferences ?? {}));
     console.log("🧪 AI prev plan provided:", !!effectivePreviousMealPlan);
     console.log("🧪 AI targets provided:", !!targets);
 
-    const combinedAllergies =
+    const combinedAllergiesRaw =
       typeof userAllergies === "string" && userAllergies.trim()
         ? userAllergies.trim()
-        : effectiveUserPreferences?.allergies ?? "";
+        : (normalizedPreferences as any)?.allergies ?? "";
+    const combinedAllergies = Array.isArray(combinedAllergiesRaw)
+      ? combinedAllergiesRaw.filter(Boolean).join(", ")
+      : String(combinedAllergiesRaw ?? "").trim();
 
     const requiredPreferenceFields = [
       "allergies",
@@ -248,9 +291,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const missingPreferences = requiredPreferenceFields.filter((field) => {
       if (field === "allergies") return !combinedAllergies;
       return (
-        effectiveUserPreferences?.[field] === undefined ||
-        effectiveUserPreferences?.[field] === null ||
-        effectiveUserPreferences?.[field] === ""
+        (normalizedPreferences as any)?.[field] === undefined ||
+        (normalizedPreferences as any)?.[field] === null ||
+        (normalizedPreferences as any)?.[field] === ""
       );
     });
     const askedFields = getAskedPreferenceFields(history);
@@ -304,7 +347,7 @@ DAILY ASSISTANT BEHAVIOR
 - If preferences are missing, ask to collect them first.
 
 PREFERENCES (do not invent)
-Saved preferences (may be empty): ${JSON.stringify(userPreferences ?? {})}
+Saved preferences (may be empty): ${JSON.stringify(normalizedPreferences ?? {})}
 User allergies (may be empty): ${combinedAllergies || "none provided"}
 
 PREVIOUS PLAN (if any)
@@ -462,10 +505,18 @@ GENERAL:
 - Ask for missing info only when required
 `;
 
-   const messages: any[] = [
-  { role: "system", content: systemPrompt },
-  { role: "system", content: nutritionInstruction },
-];
+    const messages: any[] = [
+      { role: "system", content: systemPrompt },
+      { role: "system", content: nutritionInstruction },
+    ];
+
+    if (isMealPlanMode && hasAllergiesAnswer && !allowNonAllergyQuestions) {
+      messages.push({
+        role: "system",
+        content:
+          "You have reached the maximum number of non-allergy questions. Do NOT ask any more questions. Output the FINAL meal plan JSON now.",
+      });
+    }
     if (shouldForcePlan) {
       messages.push({
         role: "system",
