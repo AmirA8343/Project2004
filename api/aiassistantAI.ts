@@ -114,6 +114,36 @@ const getAskedPreferenceFields = (history?: any[]): Set<string> => {
   return asked;
 };
 
+const getAssistantQuestionCount = (history?: any[]) => {
+  if (!history || !Array.isArray(history)) return 0;
+  return history.filter((item) => {
+    if (item?.role !== "assistant") return false;
+    const text = String(item?.content ?? "");
+    return text.includes("?") || text.includes("؟");
+  }).length;
+};
+
+const getAllergyQuestionCount = (history?: any[]) => {
+  if (!history || !Array.isArray(history)) return 0;
+  const allergyMatchers = [
+    "allerg",
+    "alerg",
+    "allergie",
+    "alerji",
+    "过敏",
+    "アレルギ",
+    "알레르기",
+    "حساسیت",
+  ];
+  return history.filter((item) => {
+    if (item?.role !== "assistant") return false;
+    const text = String(item?.content ?? "").toLowerCase();
+    const hasQuestion = text.includes("?") || text.includes("؟");
+    if (!hasQuestion) return false;
+    return allergyMatchers.some((word) => text.includes(word));
+  }).length;
+};
+
 const isReasonableTarget = (value: number, min: number, max: number) =>
   Number.isFinite(value) && value >= min && value <= max;
 
@@ -174,6 +204,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message,
       history,
       language,
+      appLanguage,
       userAge,
       isPhoto,
       photoSafetyData,
@@ -194,6 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const isMealPlanMode = mode === "meal_plan";
     const todayISO = new Date().toISOString().slice(0, 10);
+    const effectiveLanguage = language ?? appLanguage;
     const effectiveUserProfile = userProfile ?? profile;
     const effectiveUserPreferences = userPreferences ?? preferences;
     const effectivePreviousMealPlan = previousMealPlan ?? previousPlan;
@@ -222,17 +254,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     });
     const askedFields = getAskedPreferenceFields(history);
+    const totalQuestionCount = getAssistantQuestionCount(history);
+    const allergyQuestionCount = getAllergyQuestionCount(history);
+    const nonAllergyQuestionCount = Math.max(
+      0,
+      totalQuestionCount - allergyQuestionCount
+    );
+    const allowNonAllergyQuestions = nonAllergyQuestionCount < 5;
     const missingPreferencesFiltered = missingPreferences.filter((field) => {
       if (field === "allergies") return true;
+      if (!allowNonAllergyQuestions) return false;
       return !askedFields.has(field);
     });
     const hasAllergiesAnswer = Boolean(combinedAllergies);
     const shouldForcePlan =
       isMealPlanMode &&
-      missingPreferencesFiltered.length === 0 &&
+      (missingPreferencesFiltered.length === 0 || !allowNonAllergyQuestions) &&
       hasAllergiesAnswer;
     console.log("🧪 AI missing prefs:", missingPreferences);
     console.log("🧪 AI missing prefs (not asked):", missingPreferencesFiltered);
+    console.log("🧪 AI question counts:", {
+      totalQuestionCount,
+      nonAllergyQuestionCount,
+      allergyQuestionCount,
+      allowNonAllergyQuestions,
+    });
 
     const targetsInstruction = isMealPlanMode ? getTargetsInstruction(targets) : null;
     const nutritionInstruction = targetsInstruction ?? dailyNutritionRules;
@@ -241,7 +287,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `
 You are FitMacro Meal Plan Coach — a calm, practical daily meal plan assistant.
 
-${languageInstruction(language)}
+${languageInstruction(effectiveLanguage)}
 ${profileInstruction(effectiveUserProfile)}
 
 MODE: meal_plan (STRICT)
@@ -318,6 +364,8 @@ If you must ask a clarifying question first, do NOT include JSON.
 
 Missing preference fields: ${missingPreferences.join(", ") || "none"}.
 Missing preference fields (not asked yet): ${missingPreferencesFiltered.join(", ") || "none"}.
+Already asked non-allergy questions: ${nonAllergyQuestionCount} (max 5).
+Already asked total questions: ${totalQuestionCount} (max 6 including allergy).
 Ask ONLY these questions (one at a time) and only once per user:
 - Allergies / hard restrictions (safety-critical)
 - Eating mode (omnivore / vegetarian / vegan)
@@ -328,6 +376,8 @@ Ask ONLY these questions (one at a time) and only once per user:
 
 Allergies are the only field you may re-ask if unclear or missing. Be strict until allergy info is clear.
 All other questions must be asked at most once; if unanswered or unclear, do NOT ask again and proceed with a best-effort plan.
+You MUST NOT ask more than 5 non-allergy questions total. After that, stop asking and output the meal plan.
+You MUST NOT ask more than 6 total questions. If you already asked 6, output the meal plan (unless allergies are still missing).
 If allergies are clear and you already asked the optional questions (or choose not to), generate the meal plan without further questions.
 If targets or profile data are provided, use them to produce the best possible plan even if some optional answers are missing.
 If missing preference fields (not asked yet) is "none" and allergies are clear, you MUST output the FINAL meal plan JSON now and MUST NOT ask more questions.
@@ -335,7 +385,7 @@ If missing preference fields (not asked yet) is "none" and allergies are clear, 
       : `
 You are FitMacro Coach — a friendly, practical fitness & nutrition assistant.
 
-${languageInstruction(language)}
+${languageInstruction(effectiveLanguage)}
 ${profileInstruction(userProfile)}
 
 🔒 DOMAIN LOCK
