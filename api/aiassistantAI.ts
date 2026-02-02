@@ -110,6 +110,15 @@ const getAskedPreferenceFields = (history?: any[]): Set<string> => {
   ) {
     asked.add("cultural_foods");
   }
+  if (
+    assistantText.includes("grocery") ||
+    assistantText.includes("shopping") ||
+    assistantText.includes("groceries") ||
+    assistantText.includes("supermarket") ||
+    assistantText.includes("market")
+  ) {
+    asked.add("grocery_habit");
+  }
 
   return asked;
 };
@@ -268,6 +277,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         normalizedPreferences["food_allergies"] ??
         normalizedPreferences["allergyInfo"];
     }
+    if (
+      normalizedPreferences &&
+      !normalizedPreferences["grocery_habit"] &&
+      (normalizedPreferences["groceryHabit"] ||
+        normalizedPreferences["grocery"] ||
+        normalizedPreferences["shopping_habit"])
+    ) {
+      normalizedPreferences["grocery_habit"] =
+        normalizedPreferences["groceryHabit"] ??
+        normalizedPreferences["grocery"] ??
+        normalizedPreferences["shopping_habit"];
+    }
     const effectivePreviousMealPlan = previousMealPlan ?? previousPlan;
     console.log("🧪 AI meal_plan mode:", isMealPlanMode);
     console.log("🧪 AI prefs keys:", Object.keys(effectiveUserPreferences ?? {}));
@@ -287,6 +308,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "eating_mode",
       "cooking_style",
       "cultural_foods",
+      "grocery_habit",
     ];
     const missingPreferences = requiredPreferenceFields.filter((field) => {
       if (field === "allergies") return !combinedAllergies;
@@ -385,6 +407,13 @@ MEAL PLAN JSON SHAPE
     }
   ],
   "total": { "calories": number, "protein": number, "carbs": number, "fat": number },
+  "groceryList": {
+    "durationDays": 7,
+    "protein": [string],
+    "carbs": [string],
+    "produce": [string],
+    "other": [string]
+  },
   "updatedPreferences": optional object
 }
 
@@ -393,6 +422,9 @@ MEAL PLAN RULES
 - Provide realistic daily times (e.g. 08:00, 11:00, 14:00, 17:00, 20:00).
 - Items must include concrete amounts like "150 g chicken breast".
 - Sum of all items across all entries must approximately match total.
+- If grocery_habit is provided, tailor ingredients to what the user can shop for and has on hand.
+- If protein_gap is true or the user says they lack protein sources, include extra high-protein items in groceryList and make the plan rely on those.
+- Grocery list MUST be for 7 days and aligned with the meals you generate.
 
 All numbers MUST be numbers (not strings).
 Calories and macros must be realistic.
@@ -416,6 +448,7 @@ Ask ONLY these questions (one at a time) and only once per user:
 - Eating context (home vs. eating out)
 - Cultural cuisine preference
 - Today's change (training day, travel, higher protein)
+- Grocery habits (how often they shop / what they already have)
 
 Allergies are the only field you may re-ask if unclear or missing. Be strict until allergy info is clear.
 All other questions must be asked at most once; if unanswered or unclear, do NOT ask again and proceed with a best-effort plan.
