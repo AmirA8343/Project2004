@@ -7,8 +7,27 @@ type ServiceAccountShape = {
 };
 
 let app: admin.app.App | null = null;
+const EXPECTED_FIREBASE_PROJECT_ID = "fitmacros-personal";
 
 function parseServiceAccount(): ServiceAccountShape | null {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (projectId && clientEmail && privateKeyRaw) {
+    if (projectId !== EXPECTED_FIREBASE_PROJECT_ID) {
+      console.error("Firebase config warning: unexpected FIREBASE_PROJECT_ID", {
+        configuredProjectId: projectId,
+        expectedProjectId: EXPECTED_FIREBASE_PROJECT_ID,
+      });
+    }
+    return {
+      projectId,
+      clientEmail,
+      privateKey: privateKeyRaw.replace(/\\n/g, "\n"),
+    };
+  }
+
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!raw) return null;
 
@@ -16,6 +35,13 @@ function parseServiceAccount(): ServiceAccountShape | null {
     const parsed = JSON.parse(raw) as Partial<ServiceAccountShape>;
     if (!parsed.projectId || !parsed.clientEmail || !parsed.privateKey) {
       return null;
+    }
+
+    if (parsed.projectId !== EXPECTED_FIREBASE_PROJECT_ID) {
+      console.error("Firebase config warning: unexpected service account project", {
+        configuredProjectId: parsed.projectId,
+        expectedProjectId: EXPECTED_FIREBASE_PROJECT_ID,
+      });
     }
 
     return {

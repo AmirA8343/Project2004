@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireAuth } from "../lib/auth";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
@@ -351,6 +352,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   if (!OPENAI_API_KEY)
     return res.status(500).json({ error: "Missing OpenAI key" });
