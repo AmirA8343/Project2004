@@ -15,6 +15,7 @@ type CoachRequest = {
   today: JsonObject;
   history: JsonObject[];
   messages: JsonObject[];
+  activeExperiment?: JsonObject | null;
 };
 
 type CoachResponse = {
@@ -23,14 +24,17 @@ type CoachResponse = {
 
 function parseCoachRequest(body: unknown): CoachRequest | null {
   if (!isPlainObject(body)) return null;
-  const { question, today, history, messages } = body;
+  const { question, today, history, messages, activeExperiment } = body;
 
   if (!isNonEmptyString(question)) return null;
   if (!isPlainObject(today)) return null;
   if (!isObjectArray(history)) return null;
   if (!isObjectArray(messages)) return null;
+  if (!(activeExperiment === undefined || activeExperiment === null || isPlainObject(activeExperiment))) {
+    return null;
+  }
 
-  return { question, today, history, messages };
+  return { question, today, history, messages, activeExperiment: (activeExperiment ?? null) as JsonObject | null };
 }
 
 async function loadHealthRecord(uid: string, dateKey: string): Promise<JsonObject | null> {
@@ -69,9 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       history: parsed.history,
       messages: parsed.messages,
       healthRecord,
+      activeExperiment: parsed.activeExperiment,
     });
 
-    return res.status(200).json({ reply });
+    return res.status(200).json({ reply } as CoachResponse);
   } catch (error) {
     console.error("POST /api/longevity/coach failed", error);
     return res.status(500).json({ error: "Internal server error" });
