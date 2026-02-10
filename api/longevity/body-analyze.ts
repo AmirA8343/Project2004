@@ -62,17 +62,25 @@ function parseBodyAnalyzeRequest(body: unknown): BodyAnalyzeRequest | null {
 }
 
 async function loadHealthRecord(uid: string, dateKey: string): Promise<JsonObject | null> {
-  const firestore = getFirebaseFirestore();
-  const snap = await firestore
-    .collection("users")
-    .doc(uid)
-    .collection("healthRecords")
-    .doc(dateKey)
-    .get();
+  try {
+    const firestore = getFirebaseFirestore();
+    const snap = await firestore
+      .collection("users")
+      .doc(uid)
+      .collection("healthRecords")
+      .doc(dateKey)
+      .get();
 
-  if (!snap.exists) return null;
-  const data = snap.data();
-  return data && isPlainObject(data) ? (data as JsonObject) : null;
+    if (!snap.exists) return null;
+    const data = snap.data();
+    return data && isPlainObject(data) ? (data as JsonObject) : null;
+  } catch (error) {
+    console.warn("loadHealthRecord failed; continuing without health record", {
+      message: (error as any)?.message ?? String(error),
+      code: (error as any)?.code ?? null,
+    });
+    return null;
+  }
 }
 
 async function persistBodyAnalysis(
@@ -82,25 +90,32 @@ async function persistBodyAnalysis(
   result: BodyAnalyzeResponse,
   source: "vision_ai" | "placeholder"
 ): Promise<void> {
-  const firestore = getFirebaseFirestore();
-  await firestore
-    .collection("users")
-    .doc(uid)
-    .collection("aiAnalysis")
-    .doc(dateKey)
-    .set(
-      {
-        analyzedAt: admin.firestore.FieldValue.serverTimestamp(),
-        bodyAnalyze: {
-          imageUrl: input.imageUrl,
-          today: input.today,
-          history: input.history,
-          source,
-          result,
+  try {
+    const firestore = getFirebaseFirestore();
+    await firestore
+      .collection("users")
+      .doc(uid)
+      .collection("aiAnalysis")
+      .doc(dateKey)
+      .set(
+        {
+          analyzedAt: admin.firestore.FieldValue.serverTimestamp(),
+          bodyAnalyze: {
+            imageUrl: input.imageUrl,
+            today: input.today,
+            history: input.history,
+            source,
+            result,
+          },
         },
-      },
-      { merge: true }
-    );
+        { merge: true }
+      );
+  } catch (error) {
+    console.warn("persistBodyAnalysis failed; result not saved to Firestore", {
+      message: (error as any)?.message ?? String(error),
+      code: (error as any)?.code ?? null,
+    });
+  }
 }
 
 async function runVisionBodyAnalysis(input: {
@@ -228,6 +243,21 @@ export default async function handler(
     return res.status(200).json(result);
   } catch (error) {
     console.error("POST /api/longevity/body-analyze failed", error);
-    return res.status(500).json({ error: "Internal server error" });
+    try {
+      const dateKey = getDateKey(parsed.today);
+      const healthRecord = await loadHealthRecord(auth.uid, dateKey);
+      const fallback = buildBodyAnalysis({
+        uid: auth.uid,
+        imageUrl: parsed.imageUrl,
+        today: parsed.today,
+        history: parsed.history,
+        healthRecord,
+      });
+      await persistBodyAnalysis(auth.uid, dateKey, parsed, fallback, "placeholder");
+      return res.status(200).json(fallback);
+    } catch (fallbackError) {
+      console.error("POST /api/longevity/body-analyze fallback failed", fallbackError);
+      return res.status(500).json({ error: "Internal server error" });
+    }
   }
 }
