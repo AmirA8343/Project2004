@@ -22,6 +22,10 @@ export type FaceAnalyzeResponse = {
     training: string[];
     routine: string[];
   };
+  exercisePlan: {
+    oneWeek: string[];
+    oneMonth: string[];
+  };
   notes: string[];
 };
 
@@ -114,6 +118,45 @@ function parseRiskFlags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry) => typeof entry === "string") as string[];
 }
+
+
+function buildExercisePlan(input: {
+  jawlineIndex: number;
+  skinClarityIndex: number;
+  faceFatEstimate: FaceFatEstimate;
+  healthScore: number;
+}): { oneWeek: string[]; oneMonth: string[] } {
+  const intensity = input.healthScore >= 75 ? "moderate-high" : input.healthScore >= 55 ? "moderate" : "moderate-low";
+
+  const oneWeek = [
+    "Mon: Mewing/tongue posture 20 min total + neck curls 3x15 + 8k-10k steps.",
+    "Tue: Nasal breathing zone-2 cardio 30-40 min + jaw mobility 8 min + posture wall slides.",
+    "Wed: Full-body strength 45 min (moderate) + chin tucks 3x20 + hydration focus.",
+    "Thu: Chewing protocol 10-15 min (sugar-free gum) + neck extension 3x15 + recovery walk.",
+    "Fri: Full-body hypertrophy 45-60 min (" + intensity + ") + tongue posture resets every hour.",
+    "Sat: Intervals 12-16 min + facial de-bloat protocol (hydration/electrolytes/sodium consistency).",
+    "Sun: Active recovery, soft tissue release 15 min, and facial posture audit for next week.",
+  ];
+
+  const oneMonth = [
+    "Week 1: Technique phase. Build daily mewing consistency, posture alignment, and nasal breathing.",
+    "Week 2: Volume phase. Increase neck/jaw accessory work by 10-20% and keep strength sessions stable.",
+    "Week 3: Definition phase. Tighten sleep/sodium consistency and maintain mild conditioning progression.",
+    "Week 4: Consolidation. Deload lifting 20-30%, keep face drills daily, evaluate symmetry/jawline trend.",
+  ];
+
+  if (input.faceFatEstimate === "high" || input.jawlineIndex < 60) {
+    oneWeek[5] = "Sat: Intervals 12-16 min + stricter de-bloat day (high water, stable sodium, no late sugar).";
+    oneMonth[2] = "Week 3: Keep deficit mild, stabilize sodium/water, preserve muscle while reducing facial puffiness.";
+  }
+
+  if (input.skinClarityIndex < 60) {
+    oneWeek[1] = "Tue: Zone-2 cardio 30 min + hydration protocol + sleep recovery routine + SPF consistency.";
+  }
+
+  return { oneWeek, oneMonth };
+}
+
 
 export function buildCoachReply(input: {
   question: string;
@@ -297,6 +340,13 @@ export function buildFaceAnalysis(input: {
     `Estimated facial fat tendency: ${faceFatEstimate}.`,
   ];
 
+  const exercisePlan = buildExercisePlan({
+    jawlineIndex,
+    skinClarityIndex,
+    faceFatEstimate,
+    healthScore,
+  });
+
   return {
     jawlineIndex,
     skinClarityIndex,
@@ -317,6 +367,7 @@ export function buildFaceAnalysis(input: {
       training: trainingSuggestions,
       routine: routineSuggestions,
     },
+    exercisePlan,
     notes,
   };
 }

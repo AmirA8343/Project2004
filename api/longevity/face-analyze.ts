@@ -149,6 +149,10 @@ Return STRICT JSON only using this schema:
     "training": string[],
     "routine": string[]
   },
+  "exercisePlan": {
+    "oneWeek": string[],
+    "oneMonth": string[]
+  },
   "notes": string[]
 }
 
@@ -156,6 +160,8 @@ Rules:
 - Return only valid JSON (no markdown).
 - Keep values realistic and consistent.
 - suggestions arrays must have exactly 3 concise items each.
+- exercisePlan.oneWeek must have 7 concise face-focused lines (day-by-day) including mewing/tongue posture, neck/jaw drills, posture, and cardio.
+- exercisePlan.oneMonth must have 4 concise lines (week-by-week progression) with face-focused training progression.
 - notes must have 2-4 concise items.
 - This is non-medical wellness feedback.`;
 
@@ -246,6 +252,11 @@ Rules:
 
   const notes = toStringArray(parsed.notes).slice(0, 4);
 
+
+  const e = isPlainObject(parsed.exercisePlan) ? parsed.exercisePlan : {};
+  const oneWeek = toStringArray(e.oneWeek).slice(0, 7);
+  const oneMonth = toStringArray(e.oneMonth).slice(0, 4);
+
   return {
     jawlineIndex,
     skinClarityIndex,
@@ -271,6 +282,27 @@ Rules:
       routine: routine.length
         ? routine
         : ["AM sunlight + hydration.", "Protein-focused meals.", "Evening wind-down and fixed bedtime."],
+    },
+    exercisePlan: {
+      oneWeek: oneWeek.length
+        ? oneWeek
+        : [
+            "Mon: Mewing/tongue posture 20 min + neck curls + 8k-10k steps.",
+            "Tue: Zone-2 cardio + jaw mobility + posture wall slides.",
+            "Wed: Strength session + chin tucks + hydration focus.",
+            "Thu: Chewing protocol + neck extension + recovery walk.",
+            "Fri: Hypertrophy session + tongue posture resets.",
+            "Sat: Intervals + facial de-bloat protocol.",
+            "Sun: Active recovery + facial posture audit.",
+          ],
+      oneMonth: oneMonth.length
+        ? oneMonth
+        : [
+            "Week 1: Build mewing/posture consistency daily.",
+            "Week 2: Increase neck/jaw accessory volume gradually.",
+            "Week 3: Tighten sleep/sodium consistency for facial definition.",
+            "Week 4: Deload + evaluate jawline/symmetry trend.",
+          ],
     },
     notes: notes.length ? notes : ["AI vision analysis complete."],
   };
