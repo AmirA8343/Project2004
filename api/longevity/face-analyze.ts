@@ -160,7 +160,11 @@ Rules:
 - Return only valid JSON (no markdown).
 - Keep values realistic and consistent.
 - suggestions arrays must have exactly 3 concise items each.
-- exercisePlan.oneWeek must have 7 concise face-focused lines (day-by-day) including mewing/tongue posture, neck/jaw drills, posture, and cardio.
+- exercisePlan.oneWeek must have exactly 7 day lines starting with Mon..Sun.
+- Each day line must include 4 exercises minimum.
+- Mix REP-based and TIME-based prescriptions in every day.
+- Use clear set notation like [REPS 20 x 3] or [TIME 90s x 4].
+- Include jawline/tongue posture, neck-jaw drills, posture work, and conditioning.
 - exercisePlan.oneMonth must have 4 concise lines (week-by-week progression) with face-focused training progression.
 - notes must have 2-4 concise items.
 - This is non-medical wellness feedback.`;
@@ -287,13 +291,13 @@ Rules:
       oneWeek: oneWeek.length
         ? oneWeek
         : [
-            "Mon: Mewing/tongue posture 20 min + neck curls + 8k-10k steps.",
-            "Tue: Zone-2 cardio + jaw mobility + posture wall slides.",
-            "Wed: Strength session + chin tucks + hydration focus.",
-            "Thu: Chewing protocol + neck extension + recovery walk.",
-            "Fri: Hypertrophy session + tongue posture resets.",
-            "Sat: Intervals + facial de-bloat protocol.",
-            "Sun: Active recovery + facial posture audit.",
+            "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
+            "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
+            "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
+            "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
+            "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4].",
+            "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
+            "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
           ],
       oneMonth: oneMonth.length
         ? oneMonth

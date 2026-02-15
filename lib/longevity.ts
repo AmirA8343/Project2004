@@ -129,13 +129,13 @@ function buildExercisePlan(input: {
   const intensity = input.healthScore >= 75 ? "moderate-high" : input.healthScore >= 55 ? "moderate" : "moderate-low";
 
   const oneWeek = [
-    "Mon: Mewing/tongue posture 20 min total + neck curls 3x15 + 8k-10k steps.",
-    "Tue: Nasal breathing zone-2 cardio 30-40 min + jaw mobility 8 min + posture wall slides.",
-    "Wed: Full-body strength 45 min (moderate) + chin tucks 3x20 + hydration focus.",
-    "Thu: Chewing protocol 10-15 min (sugar-free gum) + neck extension 3x15 + recovery walk.",
-    "Fri: Full-body hypertrophy 45-60 min (" + intensity + ") + tongue posture resets every hour.",
-    "Sat: Intervals 12-16 min + facial de-bloat protocol (hydration/electrolytes/sodium consistency).",
-    "Sun: Active recovery, soft tissue release 15 min, and facial posture audit for next week.",
+    "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
+    "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Posture Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
+    "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
+    "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
+    "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close Control [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4] + Full-body (" + intensity + ").",
+    "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
+    "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
   ];
 
   const oneMonth = [
@@ -146,12 +146,12 @@ function buildExercisePlan(input: {
   ];
 
   if (input.faceFatEstimate === "high" || input.jawlineIndex < 60) {
-    oneWeek[5] = "Sat: Intervals 12-16 min + stricter de-bloat day (high water, stable sodium, no late sugar).";
+    oneWeek[5] = "Sat: 1) Lymph Drain Sequence [TIME 360s x 2] 2) Nasal Walk [TIME 1080s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5] + strict de-bloat day.";
     oneMonth[2] = "Week 3: Keep deficit mild, stabilize sodium/water, preserve muscle while reducing facial puffiness.";
   }
 
   if (input.skinClarityIndex < 60) {
-    oneWeek[1] = "Tue: Zone-2 cardio 30 min + hydration protocol + sleep recovery routine + SPF consistency.";
+    oneWeek[1] = "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 25 x 3] 3) Zone-2 Cardio [TIME 900s x 2] 4) Skin Recovery Block [TIME 300s x 1] + hydration/SPF focus.";
   }
 
   return { oneWeek, oneMonth };
