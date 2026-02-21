@@ -33,6 +33,10 @@ export type BodyAnalyzeResponse = {
   bodyFatRangeEstimate: string;
   postureScore: number;
   muscleDefinitionScore: number;
+  exercisePlan: {
+    oneWeek: string[];
+    oneMonth: string[];
+  };
   notes: string[];
 };
 
@@ -372,6 +376,80 @@ export function buildFaceAnalysis(input: {
   };
 }
 
+
+export function buildBodyExercisePlan(input: {
+  postureScore: number;
+  muscleDefinitionScore: number;
+  bodyFatRangeEstimate: string;
+  healthScore: number;
+}): { oneWeek: string[]; oneMonth: string[] } {
+  const postureTier =
+    input.postureScore >= 78 ? "strong" : input.postureScore >= 62 ? "moderate" : "needs_correction";
+  const definitionTier =
+    input.muscleDefinitionScore >= 76 ? "high" : input.muscleDefinitionScore >= 58 ? "moderate" : "low";
+
+  const fatText = input.bodyFatRangeEstimate.toLowerCase();
+  const profile = /22|24|26|28|30|higher/.test(fatText)
+    ? "fat_loss"
+    : /10|12|14|16|lean|athletic/.test(fatText)
+      ? "athletic"
+      : "recomp";
+
+  const strengthLoad = definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
+  const zone2Minutes = profile === "fat_loss" ? "40-50" : profile === "athletic" ? "25-35" : "30-40";
+
+  const oneWeek = [
+    "Mon: 1) Back Squat [REPS 6 x 4] 2) Romanian Deadlift [REPS 8 x 4] 3) Split Squat [REPS 10 x 3] 4) Incline Walk [TIME " + zone2Minutes + "min x 1] (" + strengthLoad + ").",
+    "Tue: 1) Bench Press [REPS 6 x 4] 2) Chest-Supported Row [REPS 10 x 4] 3) Shoulder Press [REPS 10 x 3] 4) Core Carry [TIME 60s x 4].",
+    "Wed: 1) Zone-2 Cardio [TIME 35min x 1] 2) Hip Mobility Flow [TIME 8min x 1] 3) Dead Bug [REPS 12 x 3] 4) Side Plank [TIME 35s x 3].",
+    "Thu: 1) Deadlift Pattern [REPS 5 x 5] 2) Step-Up [REPS 10 x 3] 3) Hamstring Curl [REPS 12 x 3] 4) Recovery Walk [TIME 20min x 1].",
+    "Fri: 1) Incline DB Press [REPS 10 x 4] 2) Lat Pulldown [REPS 10 x 4] 3) Cable Row [REPS 12 x 3] 4) Bike Intervals [TIME 12min x 1].",
+    "Sat: 1) Full-Body Circuit [TIME 24min x 1] 2) Sled Push/Carry [TIME 45s x 6] 3) Glute Bridge [REPS 15 x 3] 4) Mobility Reset [TIME 10min x 1].",
+    "Sun: 1) Active Recovery Walk [TIME 30min x 1] 2) Thoracic Mobility [TIME 8min x 1] 3) Breathing Reset [TIME 5min x 1] 4) Weekly Review [TIME 5min x 1].",
+  ];
+
+  if (postureTier === "needs_correction") {
+    oneWeek[2] =
+      "Wed: 1) Zone-2 Cardio [TIME 30min x 1] 2) Posture Corrective Circuit [TIME 15min x 1] 3) Chin Tuck Hold [TIME 30s x 4] 4) Dead Bug [REPS 12 x 3].";
+    oneWeek[6] =
+      "Sun: 1) Active Recovery Walk [TIME 25min x 1] 2) Wall Posture Drill [TIME 60s x 5] 3) Thoracic Extension [REPS 12 x 3] 4) Breath Reset [TIME 5min x 1].";
+  }
+
+  if (profile === "fat_loss") {
+    oneWeek[5] =
+      "Sat: 1) Full-Body Circuit [TIME 28min x 1] 2) Incline Walk [TIME 30min x 1] 3) Kettlebell Swing [REPS 15 x 4] 4) Mobility Reset [TIME 10min x 1].";
+  } else if (profile === "athletic") {
+    oneWeek[4] =
+      "Fri: 1) Incline DB Press [REPS 8 x 4] 2) Pull-Up/Lat Pulldown [REPS 8 x 4] 3) Row Variation [REPS 10 x 4] 4) Sprint Intervals [TIME 10min x 1].";
+  }
+
+  if (definitionTier === "low") {
+    oneWeek[0] =
+      "Mon: 1) Goblet Squat [REPS 10 x 4] 2) Romanian Deadlift [REPS 10 x 3] 3) Split Squat [REPS 10 x 3] 4) Incline Walk [TIME 35min x 1] (light-moderate).";
+  }
+
+  const oneMonth = [
+    "Week 1: Technique and consistency. Stay 2-3 reps in reserve and lock form quality.",
+    "Week 2: Progressive overload. Add one set to main lifts and +10% cardio volume.",
+    "Week 3: Body composition push. Keep protein high, preserve strength, tighten recovery.",
+    "Week 4: Deload and reassess. Cut lifting volume 25%, keep daily movement and mobility.",
+  ];
+
+  if (profile === "fat_loss") {
+    oneMonth[2] =
+      "Week 3: Fat-loss acceleration. Keep deficit mild, add one extra zone-2 block, preserve strength output.";
+  }
+  if (profile === "athletic") {
+    oneMonth[1] =
+      "Week 2: Performance block. Add load to compound lifts and maintain sprint quality.";
+  }
+  if (postureTier === "needs_correction") {
+    oneMonth[0] =
+      "Week 1: Posture restoration priority. Daily thoracic + neck alignment before all sessions.";
+  }
+
+  return { oneWeek, oneMonth };
+}
 export function buildBodyAnalysis(input: {
   uid: string;
   imageUrl: string;
@@ -388,8 +466,19 @@ export function buildBodyAnalysis(input: {
     "body",
   ].join("|");
 
-  const postureScore = scoreFromSeed(`${seedBase}|posture`, 40, 93);
-  const muscleDefinitionScore = scoreFromSeed(`${seedBase}|muscle`, 35, 91);
+  const computed = pickComputed(input.today, input.healthRecord);
+  const healthScore = toNumber(computed.healthScore, 70);
+
+  const postureScore = clamp(
+    Math.round(scoreFromSeed(seedBase + "|posture", 40, 93) * 0.7 + healthScore * 0.3),
+    0,
+    100
+  );
+  const muscleDefinitionScore = clamp(
+    Math.round(scoreFromSeed(seedBase + "|muscle", 35, 91) * 0.72 + healthScore * 0.28),
+    0,
+    100
+  );
   const bodySignal = Math.round((100 - postureScore + 100 - muscleDefinitionScore) / 2);
 
   let bodyFatRangeEstimate = "18-24%";
@@ -398,16 +487,24 @@ export function buildBodyAnalysis(input: {
   else if (bodySignal < 65) bodyFatRangeEstimate = "18-24%";
   else bodyFatRangeEstimate = "22-30%";
 
+  const exercisePlan = buildBodyExercisePlan({
+    postureScore,
+    muscleDefinitionScore,
+    bodyFatRangeEstimate,
+    healthScore,
+  });
+
   const notes = [
-    "Placeholder body analysis was generated deterministically from current input context.",
-    `Posture score: ${postureScore}/100, muscle definition score: ${muscleDefinitionScore}/100.`,
-    `Estimated body fat range: ${bodyFatRangeEstimate}.`,
+    "Body coach plan generated from posture, muscle definition, and recovery context.",
+    "Posture score: " + postureScore + "/100, muscle definition score: " + muscleDefinitionScore + "/100.",
+    "Estimated body fat range: " + bodyFatRangeEstimate + ".",
   ];
 
   return {
     bodyFatRangeEstimate,
     postureScore,
     muscleDefinitionScore,
+    exercisePlan,
     notes,
   };
 }

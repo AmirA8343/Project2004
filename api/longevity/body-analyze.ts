@@ -5,6 +5,7 @@ import { getFirebaseFirestore } from "../../lib/firebaseAdmin";
 import {
   BodyAnalyzeResponse,
   buildBodyAnalysis,
+  buildBodyExercisePlan,
   getDateKey,
   isNonEmptyString,
   isObjectArray,
@@ -126,22 +127,38 @@ async function runVisionBodyAnalysis(input: {
 }): Promise<BodyAnalyzeResponse | null> {
   if (!OPENAI_API_KEY) return null;
 
-  const prompt = `You are a fitness physique analysis assistant. Analyze ONLY the provided body photo.
+  const prompt = `You are an elite fitness coach and physique analysis assistant. Analyze ONLY the provided body photo.
 
 Return STRICT JSON only:
 {
   "bodyFatRangeEstimate": "string",
   "postureScore": number,            // 0..100
   "muscleDefinitionScore": number,   // 0..100
+  "exercisePlan": {
+    "oneWeek": string[],
+    "oneMonth": string[]
+  },
   "notes": string[]                  // 2-4 concise items
 }
 
 Rules:
 - Return only valid JSON (no markdown).
 - Provide realistic non-medical wellness estimates.
-- postureScore and muscleDefinitionScore must be 0..100.`;
+- postureScore and muscleDefinitionScore must be 0..100.
+- exercisePlan.oneWeek must have exactly 7 day lines starting with Mon..Sun.
+- Every day line must contain 4+ exercises and include REP/TIME prescriptions.
+- Program must reflect body type: fat-loss, recomposition, or athletic performance emphasis.
+- Include posture correction if postureScore < 62 and conditioning bias if body-fat estimate is high.
+- exercisePlan.oneMonth must have exactly 4 concise progression lines.`;
+
+  const computed = isPlainObject(input.today.computed)
+    ? input.today.computed
+    : isPlainObject(input.healthRecord?.computed)
+      ? input.healthRecord?.computed
+      : {};
 
   const contextText = JSON.stringify({
+    todayComputed: computed,
     historyDays: input.history.length,
     hasTodayComputed: Boolean(isPlainObject(input.today.computed)),
   });
@@ -189,10 +206,25 @@ Rules:
   const muscleDefinitionScore = clamp(Math.round(Number(parsed.muscleDefinitionScore) || 0), 0, 100);
   const notes = toStringArray(parsed.notes).slice(0, 4);
 
+  const fallbackPlan = buildBodyExercisePlan({
+    postureScore,
+    muscleDefinitionScore,
+    bodyFatRangeEstimate,
+    healthScore: clamp(Math.round(Number((computed as any)?.healthScore) || 70), 0, 100),
+  });
+
+  const e = isPlainObject((parsed as any).exercisePlan) ? (parsed as any).exercisePlan : {};
+  const oneWeek = toStringArray((e as any).oneWeek).slice(0, 7);
+  const oneMonth = toStringArray((e as any).oneMonth).slice(0, 4);
+
   return {
     bodyFatRangeEstimate,
     postureScore,
     muscleDefinitionScore,
+    exercisePlan: {
+      oneWeek: oneWeek.length === 7 ? oneWeek : fallbackPlan.oneWeek,
+      oneMonth: oneMonth.length === 4 ? oneMonth : fallbackPlan.oneMonth,
+    },
     notes: notes.length
       ? notes
       : [
