@@ -329,6 +329,111 @@ export function buildBodyExercisePlan(input: {
   return { oneWeek, oneMonth };
 }
 
+export function buildFaceAnalysis(input: {
+  uid: string;
+  imageUrl: string;
+  today: JsonObject;
+  history: JsonObject[];
+  healthRecord: JsonObject | null;
+}): FaceAnalyzeResponse {
+  const seedBase = [
+    input.uid,
+    input.imageUrl.trim(),
+    stableStringify(input.today),
+    stableStringify(input.history),
+    stableStringify(input.healthRecord),
+    "face",
+  ].join("|");
+
+  const computed = pickComputed(input.today, input.healthRecord);
+  const healthScore = toNumber(computed.healthScore, 70);
+
+  const jawlineIndex = clamp(
+    Math.round(scoreFromSeed(seedBase + "|jawline", 38, 92) * 0.7 + healthScore * 0.3),
+    0,
+    100
+  );
+  const skinClarityIndex = clamp(
+    Math.round(scoreFromSeed(seedBase + "|skin", 40, 94) * 0.72 + healthScore * 0.28),
+    0,
+    100
+  );
+
+  const faceFatEstimate: FaceFatEstimate =
+    jawlineIndex >= 75 ? "low" : jawlineIndex >= 55 ? "medium" : "high";
+
+  const potential = clamp(Math.round((jawlineIndex * 0.55 + skinClarityIndex * 0.45)), 0, 100);
+  const eyeArea = clamp(Math.round((skinClarityIndex * 0.6 + potential * 0.4)), 0, 100);
+  const cheekbones = clamp(Math.round((jawlineIndex * 0.7 + potential * 0.3)), 0, 100);
+  const symmetry = clamp(Math.round((eyeArea + cheekbones) / 2), 0, 100);
+  const facialThirds = clamp(Math.round((symmetry + potential) / 2), 0, 100);
+  const skinQuality = clamp(Math.round((skinClarityIndex * 0.85 + healthScore * 0.15)), 0, 100);
+  const overallScore = clamp(
+    Math.round(
+      potential * 0.2 +
+      jawlineIndex * 0.18 +
+      eyeArea * 0.12 +
+      cheekbones * 0.12 +
+      symmetry * 0.13 +
+      facialThirds * 0.1 +
+      skinQuality * 0.15
+    ),
+    0,
+    100
+  );
+
+  const exercisePlan = buildExercisePlan({
+    jawlineIndex,
+    skinClarityIndex,
+    faceFatEstimate,
+    healthScore,
+  });
+
+  return {
+    jawlineIndex,
+    skinClarityIndex,
+    faceFatEstimate,
+    overallScore,
+    measurements: {
+      potential,
+      jawline: jawlineIndex,
+      eyeArea,
+      cheekbones,
+      symmetry,
+      facialThirds,
+      skinQuality,
+    },
+    suggestions: {
+      skin: [
+        "Keep daily sunscreen use and consistent sleep timing.",
+        "Hydrate earlier in the day and reduce late sugar.",
+        "Use a simple PM recovery routine to lower skin stress.",
+      ],
+      jawline: [
+        "Improve neck posture and reduce forward-head tension.",
+        "Keep sodium more stable to reduce water retention.",
+        "Aim for gradual body-fat reduction, not aggressive cuts.",
+      ],
+      training: [
+        "Pair jawline work with neck posture drills daily.",
+        "Add 2 low-intensity cardio sessions weekly.",
+        "Keep strength training consistent to support recomposition.",
+      ],
+      routine: [
+        "AM sunlight + hydration within the first hour.",
+        "Protein-first meals and steady caffeine cutoff.",
+        "Consistent bedtime and reduced late-night screen exposure.",
+      ],
+    },
+    exercisePlan,
+    notes: [
+      "Face plan generated from jawline, skin clarity, and recovery context.",
+      "Jawline and skin scores are visual estimates, not medical measures.",
+      `Face fat estimate: ${faceFatEstimate}.`,
+    ],
+  };
+}
+
 export function buildBodyAnalysis(input: {
   uid: string;
   imageUrl: string;
