@@ -100,6 +100,37 @@ export const AVAILABLE_BODY_EXERCISE_IDS = [
   "body_form_cue_press",
 ] as const;
 
+export const AVAILABLE_FACE_EXERCISE_IDS = [
+  "mewing_hold",
+  "chin_tucks",
+  "neck_curls",
+  "nasal_breath",
+  "jaw_mobility",
+  "tongue_clicks",
+  "neck_extensions",
+  "zone2_block",
+  "mewing_pulses",
+  "posture_wall",
+  "neck_isometric",
+  "jaw_control",
+  "chew_protocol",
+  "jaw_retractions",
+  "chin_tuck_hold",
+  "de_bloat_walk",
+  "mewing_endurance",
+  "neck_superset",
+  "jaw_open_close",
+  "interval_breath",
+  "lymph_drain",
+  "nasal_walk",
+  "tongue_resets",
+  "jaw_isometric",
+  "mobility_face",
+  "light_posture",
+  "gentle_walk",
+  "technique_audit",
+] as const;
+
 export type BodyAnalyzeResponse = {
   bodyFatRangeEstimate: string;
   postureScore: number;

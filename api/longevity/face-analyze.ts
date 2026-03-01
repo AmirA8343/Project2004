@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 import { requireAuth } from "../../lib/auth";
 import { getFirebaseFirestore } from "../../lib/firebaseAdmin";
 import {
+  AVAILABLE_FACE_EXERCISE_IDS,
   buildFaceAnalysis,
   FaceAnalyzeResponse,
   getDateKey,
@@ -167,7 +168,9 @@ Rules:
 - Include jawline/tongue posture, neck-jaw drills, posture work, and conditioning.
 - exercisePlan.oneMonth must have 4 concise lines (week-by-week progression) with face-focused training progression.
 - notes must have 2-4 concise items.
-- This is non-medical wellness feedback.`;
+- This is non-medical wellness feedback.
+- Prefer this supported face exercise catalog first: ${AVAILABLE_FACE_EXERCISE_IDS.join(", ")}.
+- If an exercise is outside this catalog, use the closest supported face exercise instead.`;
 
   const computed = isPlainObject(input.today.computed)
     ? input.today.computed
@@ -260,6 +263,24 @@ Rules:
   const e = isPlainObject(parsed.exercisePlan) ? parsed.exercisePlan : {};
   const oneWeek = toStringArray(e.oneWeek).slice(0, 7);
   const oneMonth = toStringArray(e.oneMonth).slice(0, 4);
+  const fallbackExercisePlan = {
+    oneWeek: [
+      "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
+      "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
+      "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
+      "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
+      "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4].",
+      "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
+      "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
+    ],
+    oneMonth: [
+      "Week 1: Build mewing/posture consistency daily.",
+      "Week 2: Increase neck/jaw accessory volume gradually.",
+      "Week 3: Tighten sleep/sodium consistency for facial definition.",
+      "Week 4: Deload + evaluate jawline/symmetry trend.",
+    ],
+  };
+  const usedBackendPlan = oneWeek.length === 7 && oneMonth.length === 4;
 
   return {
     jawlineIndex,
@@ -287,28 +308,12 @@ Rules:
         ? routine
         : ["AM sunlight + hydration.", "Protein-focused meals.", "Evening wind-down and fixed bedtime."],
     },
-    exercisePlan: {
-      oneWeek: oneWeek.length
-        ? oneWeek
-        : [
-            "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
-            "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
-            "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
-            "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
-            "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4].",
-            "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
-            "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
-          ],
-      oneMonth: oneMonth.length
-        ? oneMonth
-        : [
-            "Week 1: Build mewing/posture consistency daily.",
-            "Week 2: Increase neck/jaw accessory volume gradually.",
-            "Week 3: Tighten sleep/sodium consistency for facial definition.",
-            "Week 4: Deload + evaluate jawline/symmetry trend.",
-          ],
-    },
-    notes: notes.length ? notes : ["AI vision analysis complete."],
+    exercisePlan: fallbackExercisePlan,
+    notes: [
+      ...(notes.length ? notes : ["AI vision analysis complete."]),
+      `Face workout constrained to supported exercise catalog (${AVAILABLE_FACE_EXERCISE_IDS.length} items).`,
+      ...(usedBackendPlan ? ["LLM face plan ignored to keep supported exercise consistency."] : []),
+    ].slice(0, 4),
   };
 }
 
