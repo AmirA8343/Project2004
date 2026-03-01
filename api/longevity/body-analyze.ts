@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 import { requireAuth } from "../../lib/auth";
 import { getFirebaseFirestore } from "../../lib/firebaseAdmin";
 import {
+  AVAILABLE_BODY_EXERCISE_IDS,
   BodyAnalyzeResponse,
   buildBodyAnalysis,
   buildBodyExercisePlan,
@@ -149,7 +150,8 @@ Rules:
 - Every day line must contain 4+ exercises and include REP/TIME prescriptions.
 - Program must reflect body type: fat-loss, recomposition, or athletic performance emphasis.
 - Include posture correction if postureScore < 62 and conditioning bias if body-fat estimate is high.
-- exercisePlan.oneMonth must have exactly 4 concise progression lines.`;
+- exercisePlan.oneMonth must have exactly 4 concise progression lines.
+- Use ONLY exercise names from this allowed catalog: ${AVAILABLE_BODY_EXERCISE_IDS.join(", ")}.`;
 
   const computed = isPlainObject(input.today.computed)
     ? input.today.computed
@@ -216,21 +218,23 @@ Rules:
   const e = isPlainObject((parsed as any).exercisePlan) ? (parsed as any).exercisePlan : {};
   const oneWeek = toStringArray((e as any).oneWeek).slice(0, 7);
   const oneMonth = toStringArray((e as any).oneMonth).slice(0, 4);
+  const usedBackendPlan = oneWeek.length === 7 && oneMonth.length === 4;
 
   return {
     bodyFatRangeEstimate,
     postureScore,
     muscleDefinitionScore,
-    exercisePlan: {
-      oneWeek: oneWeek.length === 7 ? oneWeek : fallbackPlan.oneWeek,
-      oneMonth: oneMonth.length === 4 ? oneMonth : fallbackPlan.oneMonth,
-    },
-    notes: notes.length
-      ? notes
-      : [
-          "AI vision analysis complete.",
-          "Posture and muscle definition are estimates from visible cues.",
-        ],
+    exercisePlan: fallbackPlan,
+    notes: [
+      ...(notes.length
+        ? notes
+        : [
+            "AI vision analysis complete.",
+            "Posture and muscle definition are estimates from visible cues.",
+          ]),
+      `Workout plan constrained to supported video exercise catalog (${AVAILABLE_BODY_EXERCISE_IDS.length} items).`,
+      ...(usedBackendPlan ? ["LLM exercise plan ignored to enforce supported exercise consistency."] : []),
+    ].slice(0, 4),
   };
 }
 

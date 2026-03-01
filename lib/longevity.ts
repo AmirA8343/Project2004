@@ -29,6 +29,77 @@ export type FaceAnalyzeResponse = {
   notes: string[];
 };
 
+export const AVAILABLE_BODY_EXERCISE_IDS = [
+  "body_front_squat",
+  "body_deadlift",
+  "body_lunge",
+  "body_reverse_lunge",
+  "body_stepup",
+  "body_glute_bridge",
+  "body_hip_thrust",
+  "dumbbell_goblet_squat",
+  "dumbbell_squat_hold_isometric",
+  "dumbbell_bench_press_flat",
+  "body_incline_db_press",
+  "body_db_shoulder_press",
+  "dumbbell_shoulder_press_overhead",
+  "machine_shoulder_press",
+  "body_decline_pushup",
+  "body_kneeling_pushup",
+  "body_pushup",
+  "body_standard_pushup",
+  "body_cable_chest_fly",
+  "body_cable_crossover",
+  "parallel_bar_dips",
+  "dumbbell_front_raise_alternating",
+  "cable_triceps_pushdown",
+  "body_barbell_row",
+  "body_seated_row",
+  "chest_supported_barbell_row",
+  "body_lat_pulldown",
+  "body_pullup",
+  "body_pullup_overhand",
+  "assisted_pullup_band",
+  "body_rear_delt_fly",
+  "body_db_curl",
+  "body_db_curl_alt",
+  "cable_biceps_curl_straight_bar",
+  "dumbbell_shrug_standing",
+  "body_ab_rollout",
+  "body_dead_bug_core",
+  "body_hanging_leg_raise",
+  "body_seated_leg_raise",
+  "bench_bicycle_crunch",
+  "bench_reverse_crunch",
+  "body_reverse_crunch_bench",
+  "body_crunch_standard",
+  "body_russian_twist",
+  "body_plank_forearm",
+  "body_cooldown_breathing_reset",
+  "body_cooldown_full_body_mobility",
+  "body_warmup_thoracic_rotation",
+  "body_zone2_stationary_bike",
+  "body_zone2_treadmill_walk",
+  "side_plank_forearm",
+  "body_squat_standard",
+  "body_split_squat_bulgarian",
+  "body_split_squat_static",
+  "dumbbell_rdl",
+  "body_hip_hinge_drill",
+  "leg_extension_machine",
+  "body_calf_raise_standing",
+  "body_warmup_hip_openers",
+  "body_low_impact_knee_friendly_squat",
+  "body_low_impact_back_friendly_hinge",
+  "body_form_cue_squat",
+  "body_seated_cable_row",
+  "body_interval_rower",
+  "body_form_cue_deadlift",
+  "body_db_shrug",
+  "body_warmup_shoulder_activation",
+  "body_form_cue_press",
+] as const;
+
 export type BodyAnalyzeResponse = {
   bodyFatRangeEstimate: string;
   postureScore: number;
@@ -130,252 +201,28 @@ function buildExercisePlan(input: {
   faceFatEstimate: FaceFatEstimate;
   healthScore: number;
 }): { oneWeek: string[]; oneMonth: string[] } {
-  const intensity = input.healthScore >= 75 ? "moderate-high" : input.healthScore >= 55 ? "moderate" : "moderate-low";
+  const intensity =
+    input.healthScore >= 75 ? "moderate-high" : input.healthScore >= 55 ? "moderate" : "moderate-low";
 
   const oneWeek = [
-    "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
-    "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Posture Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
-    "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
-    "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
-    "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close Control [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4] + Full-body (" + intensity + ").",
-    "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
-    "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
+    `Mon: Mewing hold 5x60s + Chin tucks 4x12 + Nasal breathing 10 min (${intensity}).`,
+    "Tue: Jaw control drills 4x15 + Tongue posture resets 5x45s + Neck isometric 4x20s.",
+    "Wed: Posture wall drill 5x45s + Light walk 20 min + Recovery breathing 6 min.",
+    "Thu: Mewing pulses 4x20 + Chin tuck hold 4x30s + Jaw mobility 8 min.",
+    "Fri: Neck superset 4 rounds + Tongue posture endurance 5x45s + Nasal walk 20 min.",
+    "Sat: Gentle facial mobility 10 min + Posture reset 8 min + De-bloat walk 25 min.",
+    "Sun: Recovery breathing 8 min + Technique audit 5 min + Light posture work 8 min.",
   ];
 
   const oneMonth = [
-    "Week 1: Technique phase. Build daily mewing consistency, posture alignment, and nasal breathing.",
-    "Week 2: Volume phase. Increase neck/jaw accessory work by 10-20% and keep strength sessions stable.",
-    "Week 3: Definition phase. Tighten sleep/sodium consistency and maintain mild conditioning progression.",
-    "Week 4: Consolidation. Deload lifting 20-30%, keep face drills daily, evaluate symmetry/jawline trend.",
+    "Week 1: Technique focus. Keep jaw, tongue, and neck drills crisp and low fatigue.",
+    "Week 2: Add volume. Increase holds by 10-15 seconds and add one extra posture set.",
+    "Week 3: Endurance focus. Maintain quality while extending nasal breathing duration.",
+    "Week 4: Deload and assess. Reduce volume 20% and reassess posture and facial tension.",
   ];
-
-  if (input.faceFatEstimate === "high" || input.jawlineIndex < 60) {
-    oneWeek[5] = "Sat: 1) Lymph Drain Sequence [TIME 360s x 2] 2) Nasal Walk [TIME 1080s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5] + strict de-bloat day.";
-    oneMonth[2] = "Week 3: Keep deficit mild, stabilize sodium/water, preserve muscle while reducing facial puffiness.";
-  }
-
-  if (input.skinClarityIndex < 60) {
-    oneWeek[1] = "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 25 x 3] 3) Zone-2 Cardio [TIME 900s x 2] 4) Skin Recovery Block [TIME 300s x 1] + hydration/SPF focus.";
-  }
 
   return { oneWeek, oneMonth };
 }
-
-
-export function buildCoachReply(input: {
-  question: string;
-  today: JsonObject;
-  history: JsonObject[];
-  messages: JsonObject[];
-  healthRecord: JsonObject | null;
-  activeExperiment?: JsonObject | null;
-}): string {
-  const { question, today, history, messages, healthRecord, activeExperiment } = input;
-
-  const computed = pickComputed(today, healthRecord);
-  const hydrationPercent = toNumber(computed.hydrationPercent);
-  const sleepQuality = toNumber(computed.sleepQuality);
-  const moodQuality = toNumber(computed.moodQuality);
-  const weightStability = toNumber(computed.weightStability, 70);
-  const healthScore = toNumber(computed.healthScore, 70);
-  const riskFlags = parseRiskFlags(computed.riskFlags);
-
-  const hints: string[] = [];
-  const plan: string[] = [];
-
-  if (hydrationPercent < 70) {
-    hints.push("Hydration trend is low on at least one recent day. Add about 500ml on active days.");
-    plan.push("Drink 500ml water in the first 60 minutes after waking.");
-  }
-  if (sleepQuality < 70) {
-    hints.push("Sleep consistency is below target. Keep bedtime and wake time fixed.");
-    plan.push("Run a 7-night fixed sleep window with no late caffeine.");
-  }
-  if (moodQuality < 60) {
-    hints.push("Stress load is elevated. Add decompression and short walks.");
-    plan.push("Schedule 10 minutes of low-intensity stress-down work daily.");
-  }
-  if (weightStability < 70) {
-    hints.push("Weight variability is elevated. Keep sodium and meal timing steady.");
-    plan.push("Keep meals inside the same 2-hour timing window each day.");
-  }
-
-  if (hints.length === 0) {
-    hints.push("Your trend is stable. Keep hydration, protein, and sleep consistency.");
-    plan.push("Maintain your current routine and log all major meals for 7 days.");
-  }
-
-  const expName = isPlainObject(activeExperiment) && isNonEmptyString(activeExperiment.name)
-    ? activeExperiment.name.trim()
-    : "";
-  if (expName) {
-    plan.unshift(`Keep experiment \"${expName}\" adherence above 80% this week.`);
-  }
-
-  const riskText = riskFlags.length > 0 ? riskFlags.join(", ") : "none";
-  const priority = hints[0] ?? "Hydration + sleep consistency.";
-  const q = question.trim();
-
-  return [
-    "AI Health Coach",
-    "",
-    `Question: ${q}`,
-    "",
-    `Insight: ${hints.join(" ")}`,
-    "",
-    `Today Priority: ${priority}`,
-    "",
-    "Next 7 Days:",
-    `1. ${plan[0] ?? "Hit hydration goal daily."}`,
-    `2. ${plan[1] ?? "Protect sleep window and caffeine cutoff."}`,
-    `3. ${plan[2] ?? "Complete movement + protein target daily."}`,
-    "",
-    `Risk Flags: ${riskText}`,
-    `Context: ${history.length} history records, ${messages.length} chat messages, score ${Math.round(healthScore)}/100.`,
-  ].join("\n");
-}
-
-export function buildFaceAnalysis(input: {
-  uid: string;
-  imageUrl: string;
-  today: JsonObject;
-  history: JsonObject[];
-  healthRecord: JsonObject | null;
-}): FaceAnalyzeResponse {
-  const seedBase = [
-    input.uid,
-    input.imageUrl.trim(),
-    stableStringify(input.today),
-    stableStringify(input.history),
-    stableStringify(input.healthRecord),
-    "face",
-  ].join("|");
-
-  const computed = pickComputed(input.today, input.healthRecord);
-  const healthScore = toNumber(computed.healthScore, 70);
-
-  const jawlineIndex = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|jawline`, 40, 94) * 0.75 + healthScore * 0.25)),
-    30,
-    98
-  );
-  const skinClarityIndex = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|skin`, 42, 95) * 0.72 + healthScore * 0.28)),
-    30,
-    98
-  );
-
-  const potential = clamp(
-    Math.round(jawlineIndex * 0.4 + skinClarityIndex * 0.35 + healthScore * 0.25),
-    30,
-    99
-  );
-  const eyeArea = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|eye`, 38, 94) * 0.7 + skinClarityIndex * 0.3)),
-    30,
-    99
-  );
-  const cheekbones = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|cheek`, 40, 95) * 0.7 + jawlineIndex * 0.3)),
-    30,
-    99
-  );
-  const symmetry = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|sym`, 40, 94) * 0.65 + potential * 0.35)),
-    30,
-    99
-  );
-  const facialThirds = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|thirds`, 38, 93) * 0.65 + symmetry * 0.35)),
-    30,
-    99
-  );
-  const skinQuality = clamp(
-    Math.round((scoreFromSeed(`${seedBase}|skinq`, 38, 95) * 0.6 + skinClarityIndex * 0.4)),
-    30,
-    99
-  );
-
-  const overallScore = clamp(
-    Math.round(
-      potential * 0.2 +
-        jawlineIndex * 0.18 +
-        eyeArea * 0.12 +
-        cheekbones * 0.12 +
-        symmetry * 0.13 +
-        facialThirds * 0.1 +
-        skinQuality * 0.15
-    ),
-    0,
-    100
-  );
-
-  const combined = Math.round((jawlineIndex + skinClarityIndex) / 2);
-  const faceFatEstimate: FaceFatEstimate =
-    combined >= 72 ? "low" : combined >= 52 ? "medium" : "high";
-
-  const skinSuggestions = [
-    "Use daily SPF in the morning and keep evening cleansing consistent.",
-    "Push sleep consistency to improve next-day skin clarity.",
-    "Keep high-sugar meals away from late evening windows.",
-  ];
-
-  const jawlineSuggestions = [
-    "Keep hydration and sodium stable to reduce facial water retention.",
-    "Add neck/posture alignment drills 5-10 minutes daily.",
-    "Prioritize slow body-fat reduction with high-protein meals.",
-  ];
-
-  const trainingSuggestions = [
-    "Do 3-4 weekly strength sessions with progressive overload.",
-    "Add 2 zone-2 cardio sessions and 1 short interval session.",
-    "Target 8k-12k daily steps on non-training days.",
-  ];
-
-  const routineSuggestions = [
-    "Morning: sunlight + hydration + protein-first meal.",
-    "Afternoon: movement break every 90 minutes.",
-    "Evening: caffeine cutoff and fixed wind-down routine.",
-  ];
-
-  const notes = [
-    "Placeholder vision scoring was generated deterministically from your current context.",
-    `Overall ${overallScore}/100. Jawline ${jawlineIndex}/100, skin clarity ${skinClarityIndex}/100.`,
-    `Estimated facial fat tendency: ${faceFatEstimate}.`,
-  ];
-
-  const exercisePlan = buildExercisePlan({
-    jawlineIndex,
-    skinClarityIndex,
-    faceFatEstimate,
-    healthScore,
-  });
-
-  return {
-    jawlineIndex,
-    skinClarityIndex,
-    faceFatEstimate,
-    overallScore,
-    measurements: {
-      potential,
-      jawline: jawlineIndex,
-      eyeArea,
-      cheekbones,
-      symmetry,
-      facialThirds,
-      skinQuality,
-    },
-    suggestions: {
-      skin: skinSuggestions,
-      jawline: jawlineSuggestions,
-      training: trainingSuggestions,
-      routine: routineSuggestions,
-    },
-    exercisePlan,
-    notes,
-  };
-}
-
 
 export function buildBodyExercisePlan(input: {
   postureScore: number;
@@ -395,37 +242,37 @@ export function buildBodyExercisePlan(input: {
       ? "athletic"
       : "recomp";
 
-  const strengthLoad = definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
-  const zone2Minutes = profile === "fat_loss" ? "40-50" : profile === "athletic" ? "25-35" : "30-40";
+  const strengthLoad =
+    definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
 
   const oneWeek = [
-    "Mon: 1) Back Squat [REPS 6 x 4] 2) Romanian Deadlift [REPS 8 x 4] 3) Split Squat [REPS 10 x 3] 4) Incline Walk [TIME " + zone2Minutes + "min x 1] (" + strengthLoad + ").",
-    "Tue: 1) Bench Press [REPS 6 x 4] 2) Chest-Supported Row [REPS 10 x 4] 3) Shoulder Press [REPS 10 x 3] 4) Core Carry [TIME 60s x 4].",
-    "Wed: 1) Zone-2 Cardio [TIME 35min x 1] 2) Hip Mobility Flow [TIME 8min x 1] 3) Dead Bug [REPS 12 x 3] 4) Side Plank [TIME 35s x 3].",
-    "Thu: 1) Deadlift Pattern [REPS 5 x 5] 2) Step-Up [REPS 10 x 3] 3) Hamstring Curl [REPS 12 x 3] 4) Recovery Walk [TIME 20min x 1].",
-    "Fri: 1) Incline DB Press [REPS 10 x 4] 2) Lat Pulldown [REPS 10 x 4] 3) Cable Row [REPS 12 x 3] 4) Bike Intervals [TIME 12min x 1].",
-    "Sat: 1) Full-Body Circuit [TIME 24min x 1] 2) Sled Push/Carry [TIME 45s x 6] 3) Glute Bridge [REPS 15 x 3] 4) Mobility Reset [TIME 10min x 1].",
-    "Sun: 1) Active Recovery Walk [TIME 30min x 1] 2) Thoracic Mobility [TIME 8min x 1] 3) Breathing Reset [TIME 5min x 1] 4) Weekly Review [TIME 5min x 1].",
+    `Mon: 1) Body Squat Standard [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
+    "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 3] 4) Body Dead Bug Core [REPS 12 x 3].",
+    "Wed: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Warmup Thoracic Rotation [TIME 8min x 1].",
+    "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].",
+    "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body Barbell Row [REPS 12 x 3] 4) Body Interval Rower [TIME 12min x 1].",
+    "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
+    "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Cable Crossover [REPS 12 x 3] 4) Body Seated Leg Raise [REPS 15 x 3].",
   ];
 
   if (postureTier === "needs_correction") {
     oneWeek[2] =
-      "Wed: 1) Zone-2 Cardio [TIME 30min x 1] 2) Posture Corrective Circuit [TIME 15min x 1] 3) Chin Tuck Hold [TIME 30s x 4] 4) Dead Bug [REPS 12 x 3].";
+      "Wed: 1) Body Zone2 Treadmill Walk [TIME 25min x 1] 2) Body Warmup Thoracic Rotation [TIME 10min x 1] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Dead Bug Core [REPS 12 x 3].";
     oneWeek[6] =
-      "Sun: 1) Active Recovery Walk [TIME 25min x 1] 2) Wall Posture Drill [TIME 60s x 5] 3) Thoracic Extension [REPS 12 x 3] 4) Breath Reset [TIME 5min x 1].";
+      "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Plank Forearm [TIME 30s x 3] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Hip Hinge Drill [REPS 10 x 3].";
   }
 
   if (profile === "fat_loss") {
     oneWeek[5] =
-      "Sat: 1) Full-Body Circuit [TIME 28min x 1] 2) Incline Walk [TIME 30min x 1] 3) Kettlebell Swing [REPS 15 x 4] 4) Mobility Reset [TIME 10min x 1].";
+      "Sat: 1) Body Pushup [REPS 15 x 4] 2) Body Low Impact Knee Friendly Squat [REPS 12 x 3] 3) Body Zone2 Treadmill Walk [TIME 30min x 1] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].";
   } else if (profile === "athletic") {
     oneWeek[4] =
-      "Fri: 1) Incline DB Press [REPS 8 x 4] 2) Pull-Up/Lat Pulldown [REPS 8 x 4] 3) Row Variation [REPS 10 x 4] 4) Sprint Intervals [TIME 10min x 1].";
+      "Fri: 1) Body Incline DB Press [REPS 8 x 4] 2) Body Pullup Overhand [REPS 8 x 4] 3) Body Seated Cable Row [REPS 10 x 4] 4) Body Interval Rower [TIME 10min x 1].";
   }
 
   if (definitionTier === "low") {
     oneWeek[0] =
-      "Mon: 1) Goblet Squat [REPS 10 x 4] 2) Romanian Deadlift [REPS 10 x 3] 3) Split Squat [REPS 10 x 3] 4) Incline Walk [TIME 35min x 1] (light-moderate).";
+      "Mon: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Static [REPS 10 x 3] 4) Body Zone2 Treadmill Walk [TIME 30min x 1] (light-moderate).";
   }
 
   const oneMonth = [
@@ -445,11 +292,12 @@ export function buildBodyExercisePlan(input: {
   }
   if (postureTier === "needs_correction") {
     oneMonth[0] =
-      "Week 1: Posture restoration priority. Daily thoracic + neck alignment before all sessions.";
+      "Week 1: Posture restoration priority. Daily thoracic + shoulder alignment before all sessions.";
   }
 
   return { oneWeek, oneMonth };
 }
+
 export function buildBodyAnalysis(input: {
   uid: string;
   imageUrl: string;
