@@ -26,6 +26,13 @@ export type FaceAnalyzeResponse = {
     oneWeek: string[];
     oneMonth: string[];
   };
+  faceExerciseVideoMap?: Record<
+    string,
+    {
+      videoKey: string | null;
+      fileName: string | null;
+    }
+  >;
   notes: string[];
 };
 

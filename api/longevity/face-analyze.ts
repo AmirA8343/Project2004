@@ -19,6 +19,14 @@ type FaceAnalyzeRequest = {
   imageUrl: string;
   today: JsonObject;
   history: JsonObject[];
+  availableExerciseIds: string[];
+  faceExerciseVideoMap: Record<
+    string,
+    {
+      videoKey: string | null;
+      fileName: string | null;
+    }
+  >;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -51,15 +59,51 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function normalizeAvailableExerciseIds(value: unknown): string[] {
+  const allowed = new Set<string>(AVAILABLE_FACE_EXERCISE_IDS);
+  const incoming = toStringArray(value).map((item) => item.trim());
+  const filtered = incoming.filter((item) => allowed.has(item));
+  return filtered.length ? filtered : [...AVAILABLE_FACE_EXERCISE_IDS];
+}
+
+function parseFaceExerciseVideoMap(
+  value: unknown,
+  availableExerciseIds: string[]
+): Record<string, { videoKey: string | null; fileName: string | null }> {
+  if (!isPlainObject(value)) return {};
+
+  const allowed = new Set<string>(availableExerciseIds);
+  const out: Record<string, { videoKey: string | null; fileName: string | null }> = {};
+
+  for (const [exerciseId, rawEntry] of Object.entries(value)) {
+    if (!allowed.has(exerciseId)) continue;
+    if (!isPlainObject(rawEntry)) continue;
+    const videoKey = isNonEmptyString(rawEntry.videoKey) ? rawEntry.videoKey.trim() : null;
+    const fileName = isNonEmptyString(rawEntry.fileName) ? rawEntry.fileName.trim() : null;
+    out[exerciseId] = { videoKey, fileName };
+  }
+
+  return out;
+}
+
 function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   if (!isPlainObject(body)) return null;
-  const { imageUrl, today, history } = body;
+  const { imageUrl, today, history, availableExerciseIds, faceExerciseVideoMap } = body;
 
   if (!isNonEmptyString(imageUrl)) return null;
   if (!isPlainObject(today)) return null;
   if (!isObjectArray(history)) return null;
 
-  return { imageUrl, today, history };
+  const normalizedExerciseIds = normalizeAvailableExerciseIds(availableExerciseIds);
+  const normalizedVideoMap = parseFaceExerciseVideoMap(faceExerciseVideoMap, normalizedExerciseIds);
+
+  return {
+    imageUrl,
+    today,
+    history,
+    availableExerciseIds: normalizedExerciseIds,
+    faceExerciseVideoMap: normalizedVideoMap,
+  };
 }
 
 async function loadHealthRecord(uid: string, dateKey: string): Promise<JsonObject | null> {
@@ -124,6 +168,8 @@ async function runVisionFaceAnalysis(input: {
   today: JsonObject;
   history: JsonObject[];
   healthRecord: JsonObject | null;
+  availableExerciseIds: string[];
+  faceExerciseVideoMap: Record<string, { videoKey: string | null; fileName: string | null }>;
 }): Promise<FaceAnalyzeResponse | null> {
   if (!OPENAI_API_KEY) return null;
 
@@ -169,7 +215,7 @@ Rules:
 - exercisePlan.oneMonth must have 4 concise lines (week-by-week progression) with face-focused training progression.
 - notes must have 2-4 concise items.
 - This is non-medical wellness feedback.
-- Prefer this supported face exercise catalog first: ${AVAILABLE_FACE_EXERCISE_IDS.join(", ")}.
+- Prefer this supported face exercise catalog first: ${input.availableExerciseIds.join(", ")}.
 - If an exercise is outside this catalog, use the closest supported face exercise instead.`;
 
   const computed = isPlainObject(input.today.computed)
@@ -181,6 +227,8 @@ Rules:
   const contextText = JSON.stringify({
     todayComputed: computed,
     historyDays: input.history.length,
+    availableFaceExercises: input.availableExerciseIds,
+    faceExerciseVideoMap: input.faceExerciseVideoMap,
   });
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -334,6 +382,14 @@ export default async function handler(
   }
 
   try {
+    console.log("[face-analyze] request metadata", {
+      availableExerciseCount: parsed.availableExerciseIds.length,
+      mappedVideoCount: Object.keys(parsed.faceExerciseVideoMap).length,
+    });
+    if (Object.keys(parsed.faceExerciseVideoMap).length > 0) {
+      console.log("[face-analyze] received exercise->video map", parsed.faceExerciseVideoMap);
+    }
+
     const dateKey = getDateKey(parsed.today);
     const healthRecord = await loadHealthRecord(auth.uid, dateKey);
 
@@ -342,6 +398,8 @@ export default async function handler(
       today: parsed.today,
       history: parsed.history,
       healthRecord,
+      availableExerciseIds: parsed.availableExerciseIds,
+      faceExerciseVideoMap: parsed.faceExerciseVideoMap,
     });
 
     const result =
@@ -354,8 +412,14 @@ export default async function handler(
         healthRecord,
       });
 
-    await persistFaceAnalysis(auth.uid, dateKey, parsed, result, vision ? "vision_ai" : "placeholder");
-    return res.status(200).json(result);
+    const resultWithVideoMap: FaceAnalyzeResponse = {
+      ...result,
+      faceExerciseVideoMap: parsed.faceExerciseVideoMap,
+    };
+
+    console.log("[face-analyze] response exercise->video map", resultWithVideoMap.faceExerciseVideoMap);
+    await persistFaceAnalysis(auth.uid, dateKey, parsed, resultWithVideoMap, vision ? "vision_ai" : "placeholder");
+    return res.status(200).json(resultWithVideoMap);
   } catch (error) {
     console.error("POST /api/longevity/face-analyze failed", error);
     try {
@@ -368,8 +432,13 @@ export default async function handler(
         history: parsed.history,
         healthRecord,
       });
-      await persistFaceAnalysis(auth.uid, dateKey, parsed, fallback, "placeholder");
-      return res.status(200).json(fallback);
+      const fallbackWithVideoMap: FaceAnalyzeResponse = {
+        ...fallback,
+        faceExerciseVideoMap: parsed.faceExerciseVideoMap,
+      };
+      console.log("[face-analyze] fallback response exercise->video map", fallbackWithVideoMap.faceExerciseVideoMap);
+      await persistFaceAnalysis(auth.uid, dateKey, parsed, fallbackWithVideoMap, "placeholder");
+      return res.status(200).json(fallbackWithVideoMap);
     } catch (fallbackError) {
       console.error("POST /api/longevity/face-analyze fallback failed", fallbackError);
       return res.status(500).json({ error: "Internal server error" });

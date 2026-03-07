@@ -20,6 +20,14 @@ type BodyAnalyzeRequest = {
   imageUrl: string;
   today: JsonObject;
   history: JsonObject[];
+  availableExerciseIds: string[];
+  faceExerciseVideoMap: Record<
+    string,
+    {
+      videoKey: string | null;
+      fileName: string | null;
+    }
+  >;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -52,15 +60,43 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function normalizeBodyExerciseIds(value: unknown): string[] {
+  const allowed = new Set<string>(AVAILABLE_BODY_EXERCISE_IDS);
+  const incoming = toStringArray(value).map((item) => item.trim());
+  const filtered = incoming.filter((item) => allowed.has(item));
+  return filtered.length ? filtered : [...AVAILABLE_BODY_EXERCISE_IDS];
+}
+
+function parseFaceExerciseVideoMap(
+  value: unknown
+): Record<string, { videoKey: string | null; fileName: string | null }> {
+  if (!isPlainObject(value)) return {};
+
+  const out: Record<string, { videoKey: string | null; fileName: string | null }> = {};
+  for (const [exerciseId, rawEntry] of Object.entries(value)) {
+    if (!isPlainObject(rawEntry)) continue;
+    const videoKey = isNonEmptyString(rawEntry.videoKey) ? rawEntry.videoKey.trim() : null;
+    const fileName = isNonEmptyString(rawEntry.fileName) ? rawEntry.fileName.trim() : null;
+    out[exerciseId] = { videoKey, fileName };
+  }
+  return out;
+}
+
 function parseBodyAnalyzeRequest(body: unknown): BodyAnalyzeRequest | null {
   if (!isPlainObject(body)) return null;
-  const { imageUrl, today, history } = body;
+  const { imageUrl, today, history, availableExerciseIds, faceExerciseVideoMap } = body;
 
   if (!isNonEmptyString(imageUrl)) return null;
   if (!isPlainObject(today)) return null;
   if (!isObjectArray(history)) return null;
 
-  return { imageUrl, today, history };
+  return {
+    imageUrl,
+    today,
+    history,
+    availableExerciseIds: normalizeBodyExerciseIds(availableExerciseIds),
+    faceExerciseVideoMap: parseFaceExerciseVideoMap(faceExerciseVideoMap),
+  };
 }
 
 async function loadHealthRecord(uid: string, dateKey: string): Promise<JsonObject | null> {
@@ -255,6 +291,14 @@ export default async function handler(
   }
 
   try {
+    console.log("[body-analyze] request metadata", {
+      availableExerciseCount: parsed.availableExerciseIds.length,
+      mappedFaceVideoCount: Object.keys(parsed.faceExerciseVideoMap).length,
+    });
+    if (Object.keys(parsed.faceExerciseVideoMap).length > 0) {
+      console.log("[body-analyze] received face exercise->video map", parsed.faceExerciseVideoMap);
+    }
+
     const dateKey = getDateKey(parsed.today);
     const healthRecord = await loadHealthRecord(auth.uid, dateKey);
 
