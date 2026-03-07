@@ -20,6 +20,11 @@ type FaceAnalyzeRequest = {
   today: JsonObject;
   history: JsonObject[];
   availableExerciseIds: string[];
+  availableFaceVideoExercises: Array<{
+    exerciseId: string;
+    videoKey: string;
+    fileName: string;
+  }>;
   faceExerciseVideoMap: Record<
     string,
     {
@@ -59,11 +64,95 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function extractExerciseIdsFromPlanLine(line: string): string[] {
+  const ids: string[] = [];
+  const regex = /\[ID:([a-z0-9_]+)\]/gi;
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(line))) {
+    if (match[1]) ids.push(match[1].toLowerCase());
+  }
+  return ids;
+}
+
+function isPlanVideoCatalogSafe(
+  oneWeek: string[],
+  allowedExerciseIds: string[]
+): { valid: boolean; reason: string } {
+  if (oneWeek.length !== 7) return { valid: false, reason: "week_length_invalid" };
+  const allowed = new Set(allowedExerciseIds);
+
+  for (const line of oneWeek) {
+    const ids = extractExerciseIdsFromPlanLine(line);
+    if (ids.length < 4) return { valid: false, reason: "missing_or_short_id_tags" };
+    if (ids.some((id) => !allowed.has(id))) return { valid: false, reason: "contains_unsupported_exercise_id" };
+  }
+  return { valid: true, reason: "ok" };
+}
+
+function buildCatalogSafeFallbackExercisePlan(): { oneWeek: string[]; oneMonth: string[] } {
+  return {
+    oneWeek: [
+      "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
+      "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
+      "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
+      "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
+      "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close [REPS 20 x 3] 4) Nasal Breathing [TIME 240s x 3].",
+      "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
+      "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Mewing Hold [TIME 60s x 3].",
+    ],
+    oneMonth: [
+      "Week 1: Build mewing/posture consistency daily.",
+      "Week 2: Increase neck/jaw accessory volume gradually.",
+      "Week 3: Tighten sleep/sodium consistency for facial definition.",
+      "Week 4: Deload + evaluate jawline/symmetry trend.",
+    ],
+  };
+}
+
 function normalizeAvailableExerciseIds(value: unknown): string[] {
   const allowed = new Set<string>(AVAILABLE_FACE_EXERCISE_IDS);
   const incoming = toStringArray(value).map((item) => item.trim());
   const filtered = incoming.filter((item) => allowed.has(item));
   return filtered.length ? filtered : [...AVAILABLE_FACE_EXERCISE_IDS];
+}
+
+function parseAvailableFaceVideoExercises(
+  value: unknown,
+  availableExerciseIds: string[]
+): Array<{ exerciseId: string; videoKey: string; fileName: string }> {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set<string>(availableExerciseIds);
+  const out: Array<{ exerciseId: string; videoKey: string; fileName: string }> = [];
+
+  for (const entry of value) {
+    if (!isPlainObject(entry)) continue;
+    const exerciseId = isNonEmptyString(entry.exerciseId) ? entry.exerciseId.trim() : "";
+    const videoKey = isNonEmptyString(entry.videoKey) ? entry.videoKey.trim() : "";
+    const fileName = isNonEmptyString(entry.fileName) ? entry.fileName.trim() : "";
+    if (!exerciseId || !videoKey || !fileName) continue;
+    if (!allowed.has(exerciseId)) continue;
+    out.push({ exerciseId, videoKey, fileName });
+  }
+
+  return out;
+}
+
+function buildFallbackVideoExercisesFromMap(
+  faceExerciseVideoMap: Record<string, { videoKey: string | null; fileName: string | null }>,
+  availableExerciseIds: string[]
+): Array<{ exerciseId: string; videoKey: string; fileName: string }> {
+  const allowed = new Set<string>(availableExerciseIds);
+  const out: Array<{ exerciseId: string; videoKey: string; fileName: string }> = [];
+  for (const [exerciseId, value] of Object.entries(faceExerciseVideoMap)) {
+    if (!allowed.has(exerciseId)) continue;
+    if (!value?.videoKey || !value?.fileName) continue;
+    out.push({
+      exerciseId,
+      videoKey: value.videoKey,
+      fileName: value.fileName,
+    });
+  }
+  return out;
 }
 
 function parseFaceExerciseVideoMap(
@@ -88,20 +177,35 @@ function parseFaceExerciseVideoMap(
 
 function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   if (!isPlainObject(body)) return null;
-  const { imageUrl, today, history, availableExerciseIds, faceExerciseVideoMap } = body;
+  const {
+    imageUrl,
+    today,
+    history,
+    availableExerciseIds,
+    availableFaceVideoExercises,
+    faceExerciseVideoMap,
+  } = body;
 
   if (!isNonEmptyString(imageUrl)) return null;
   if (!isPlainObject(today)) return null;
   if (!isObjectArray(history)) return null;
 
   const normalizedExerciseIds = normalizeAvailableExerciseIds(availableExerciseIds);
+  const normalizedVideoExercises = parseAvailableFaceVideoExercises(
+    availableFaceVideoExercises,
+    normalizedExerciseIds
+  );
   const normalizedVideoMap = parseFaceExerciseVideoMap(faceExerciseVideoMap, normalizedExerciseIds);
+  const videoExerciseCatalog = normalizedVideoExercises.length
+    ? normalizedVideoExercises
+    : buildFallbackVideoExercisesFromMap(normalizedVideoMap, normalizedExerciseIds);
 
   return {
     imageUrl,
     today,
     history,
     availableExerciseIds: normalizedExerciseIds,
+    availableFaceVideoExercises: videoExerciseCatalog,
     faceExerciseVideoMap: normalizedVideoMap,
   };
 }
@@ -169,6 +273,7 @@ async function runVisionFaceAnalysis(input: {
   history: JsonObject[];
   healthRecord: JsonObject | null;
   availableExerciseIds: string[];
+  availableFaceVideoExercises: Array<{ exerciseId: string; videoKey: string; fileName: string }>;
   faceExerciseVideoMap: Record<string, { videoKey: string | null; fileName: string | null }>;
 }): Promise<FaceAnalyzeResponse | null> {
   if (!OPENAI_API_KEY) return null;
@@ -209,14 +314,16 @@ Rules:
 - suggestions arrays must have exactly 3 concise items each.
 - exercisePlan.oneWeek must have exactly 7 day lines starting with Mon..Sun.
 - Each day line must include 4 exercises minimum.
+- Every exercise must include its ID tag, e.g. [ID:mewing_hold].
 - Mix REP-based and TIME-based prescriptions in every day.
 - Use clear set notation like [REPS 20 x 3] or [TIME 90s x 4].
 - Include jawline/tongue posture, neck-jaw drills, posture work, and conditioning.
 - exercisePlan.oneMonth must have 4 concise lines (week-by-week progression) with face-focused training progression.
 - notes must have 2-4 concise items.
 - This is non-medical wellness feedback.
-- Prefer this supported face exercise catalog first: ${input.availableExerciseIds.join(", ")}.
-- If an exercise is outside this catalog, use the closest supported face exercise instead.`;
+- Use ONLY this video-backed face exercise catalog (exerciseId -> fileName):
+${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${item.fileName}`).join("\n")}
+- If unsure, pick the closest exerciseId from the catalog above.`;
 
   const computed = isPlainObject(input.today.computed)
     ? input.today.computed
@@ -228,6 +335,7 @@ Rules:
     todayComputed: computed,
     historyDays: input.history.length,
     availableFaceExercises: input.availableExerciseIds,
+    availableFaceVideoExercises: input.availableFaceVideoExercises,
     faceExerciseVideoMap: input.faceExerciseVideoMap,
   });
 
@@ -311,24 +419,17 @@ Rules:
   const e = isPlainObject(parsed.exercisePlan) ? parsed.exercisePlan : {};
   const oneWeek = toStringArray(e.oneWeek).slice(0, 7);
   const oneMonth = toStringArray(e.oneMonth).slice(0, 4);
-  const fallbackExercisePlan = {
-    oneWeek: [
-      "Mon: 1) Mewing Hold [TIME 90s x 4] 2) Chin Tucks [REPS 20 x 3] 3) Neck Curls [REPS 15 x 3] 4) Nasal Breathing [TIME 300s x 2].",
-      "Tue: 1) Jaw Mobility Drill [TIME 120s x 2] 2) Tongue Clicks [REPS 30 x 3] 3) Neck Extensions [REPS 15 x 3] 4) Zone-2 Nasal Cardio [TIME 600s x 2].",
-      "Wed: 1) Mewing Pulses [TIME 60s x 5] 2) Wall Posture Holds [TIME 45s x 4] 3) Neck Isometric Press [TIME 30s x 4] 4) Jaw Control [REPS 16 x 3].",
-      "Thu: 1) Chewing Protocol [TIME 300s x 2] 2) Jaw Retractions [REPS 15 x 3] 3) Chin Tuck Holds [TIME 30s x 4] 4) Recovery Walk [TIME 900s x 2].",
-      "Fri: 1) Mewing Endurance [TIME 120s x 4] 2) Neck Flex/Ext [REPS 12 x 4] 3) Jaw Open-Close [REPS 20 x 3] 4) Breath Intervals [TIME 180s x 4].",
-      "Sat: 1) Lymph Drain Sequence [TIME 300s x 2] 2) Nasal Walk [TIME 900s x 2] 3) Tongue Resets [REPS 40 x 2] 4) Jaw Isometrics [TIME 30s x 5].",
-      "Sun: 1) Face+Neck Mobility [TIME 300s x 2] 2) Posture Tune-up [TIME 60s x 4] 3) Gentle Walk [TIME 1200s x 1] 4) Technique Audit [REPS 12 x 1].",
-    ],
-    oneMonth: [
-      "Week 1: Build mewing/posture consistency daily.",
-      "Week 2: Increase neck/jaw accessory volume gradually.",
-      "Week 3: Tighten sleep/sodium consistency for facial definition.",
-      "Week 4: Deload + evaluate jawline/symmetry trend.",
-    ],
-  };
-  const usedBackendPlan = oneWeek.length === 7 && oneMonth.length === 4;
+  const fallbackExercisePlan = buildCatalogSafeFallbackExercisePlan();
+  const planSafety = isPlanVideoCatalogSafe(oneWeek, input.availableExerciseIds);
+  const usedBackendPlan = oneWeek.length === 7 && oneMonth.length === 4 && planSafety.valid;
+  if (!planSafety.valid) {
+    console.log("[face-analyze] backend plan rejected, using catalog-safe fallback", {
+      reason: planSafety.reason,
+    });
+  }
+  const selectedExercisePlan = usedBackendPlan
+    ? { oneWeek, oneMonth }
+    : fallbackExercisePlan;
 
   return {
     jawlineIndex,
@@ -356,11 +457,13 @@ Rules:
         ? routine
         : ["AM sunlight + hydration.", "Protein-focused meals.", "Evening wind-down and fixed bedtime."],
     },
-    exercisePlan: fallbackExercisePlan,
+    exercisePlan: selectedExercisePlan,
     notes: [
       ...(notes.length ? notes : ["AI vision analysis complete."]),
-      `Face workout constrained to supported exercise catalog (${AVAILABLE_FACE_EXERCISE_IDS.length} items).`,
-      ...(usedBackendPlan ? ["LLM face plan ignored to keep supported exercise consistency."] : []),
+      `Face workout constrained to supported video-backed exercise catalog (${input.availableExerciseIds.length} items).`,
+      ...(usedBackendPlan
+        ? ["LLM face plan accepted: all exercise IDs matched video-backed catalog."]
+        : ["LLM face plan auto-replaced with catalog-safe fallback due to unsupported/missing exercise IDs."]),
     ].slice(0, 4),
   };
 }
@@ -384,8 +487,12 @@ export default async function handler(
   try {
     console.log("[face-analyze] request metadata", {
       availableExerciseCount: parsed.availableExerciseIds.length,
+      availableFaceVideoExerciseCount: parsed.availableFaceVideoExercises.length,
       mappedVideoCount: Object.keys(parsed.faceExerciseVideoMap).length,
     });
+    if (parsed.availableFaceVideoExercises.length > 0) {
+      console.log("[face-analyze] available face video exercises", parsed.availableFaceVideoExercises);
+    }
     if (Object.keys(parsed.faceExerciseVideoMap).length > 0) {
       console.log("[face-analyze] received exercise->video map", parsed.faceExerciseVideoMap);
     }
@@ -399,6 +506,7 @@ export default async function handler(
       history: parsed.history,
       healthRecord,
       availableExerciseIds: parsed.availableExerciseIds,
+      availableFaceVideoExercises: parsed.availableFaceVideoExercises,
       faceExerciseVideoMap: parsed.faceExerciseVideoMap,
     });
 
