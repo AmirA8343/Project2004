@@ -42,6 +42,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeScore(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const scaled = n > 0 && n <= 10 ? n * 10 : n;
+  return clamp(Math.round(scaled), 0, 100);
+}
+
 function extractJson(text: string): any | null {
   if (!text) return null;
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -271,18 +278,18 @@ async function runCloudImageFaceAnalysis(input: {
 
 Return STRICT JSON only using this schema:
 {
-  "jawlineIndex": number,
-  "skinClarityIndex": number,
+  "jawlineIndex": number, // 0..100
+  "skinClarityIndex": number, // 0..100
   "faceFatEstimate": "low"|"medium"|"high",
-  "overallScore": number,
+  "overallScore": number, // 0..100
   "measurements": {
-    "potential": number,
-    "jawline": number,
-    "eyeArea": number,
-    "cheekbones": number,
-    "symmetry": number,
-    "facialThirds": number,
-    "skinQuality": number
+    "potential": number, // 0..100
+    "jawline": number, // 0..100
+    "eyeArea": number, // 0..100
+    "cheekbones": number, // 0..100
+    "symmetry": number, // 0..100
+    "facialThirds": number, // 0..100
+    "skinQuality": number // 0..100
   },
   "suggestions": {
     "skin": string[],
@@ -366,18 +373,18 @@ Important:
 
 Return STRICT JSON only using this schema:
 {
-  "jawlineIndex": number,
-  "skinClarityIndex": number,
+  "jawlineIndex": number, // 0..100
+  "skinClarityIndex": number, // 0..100
   "faceFatEstimate": "low"|"medium"|"high",
-  "overallScore": number,
+  "overallScore": number, // 0..100
   "measurements": {
-    "potential": number,
-    "jawline": number,
-    "eyeArea": number,
-    "cheekbones": number,
-    "symmetry": number,
-    "facialThirds": number,
-    "skinQuality": number
+    "potential": number, // 0..100
+    "jawline": number, // 0..100
+    "eyeArea": number, // 0..100
+    "cheekbones": number, // 0..100
+    "symmetry": number, // 0..100
+    "facialThirds": number, // 0..100
+    "skinQuality": number // 0..100
   },
   "suggestions": {
     "skin": string[],
@@ -444,8 +451,8 @@ function normalizeOpenAiFaceResponse(data: any): FaceAnalyzeResponse | null {
   const parsed = extractJson(content);
   if (!parsed || typeof parsed !== "object") return null;
 
-  const jawlineIndex = clamp(Math.round(Number(parsed.jawlineIndex) || 0), 0, 100);
-  const skinClarityIndex = clamp(Math.round(Number(parsed.skinClarityIndex) || 0), 0, 100);
+  const jawlineIndex = normalizeScore(parsed.jawlineIndex);
+  const skinClarityIndex = normalizeScore(parsed.skinClarityIndex);
   const faceFatEstimate =
     parsed.faceFatEstimate === "low" || parsed.faceFatEstimate === "medium" || parsed.faceFatEstimate === "high"
       ? parsed.faceFatEstimate
@@ -456,16 +463,16 @@ function normalizeOpenAiFaceResponse(data: any): FaceAnalyzeResponse | null {
           : "high";
 
   const m = isPlainObject(parsed.measurements) ? parsed.measurements : {};
-  const potential = clamp(Math.round(Number(m.potential) || ((jawlineIndex + skinClarityIndex) / 2)), 0, 100);
-  const eyeArea = clamp(Math.round(Number(m.eyeArea) || ((skinClarityIndex + potential) / 2)), 0, 100);
-  const cheekbones = clamp(Math.round(Number(m.cheekbones) || ((jawlineIndex + potential) / 2)), 0, 100);
-  const symmetry = clamp(Math.round(Number(m.symmetry) || ((eyeArea + cheekbones) / 2)), 0, 100);
-  const facialThirds = clamp(Math.round(Number(m.facialThirds) || ((symmetry + potential) / 2)), 0, 100);
-  const skinQuality = clamp(Math.round(Number(m.skinQuality) || skinClarityIndex), 0, 100);
+  const potential = normalizeScore(Number(m.potential) || ((jawlineIndex + skinClarityIndex) / 2));
+  const eyeArea = normalizeScore(Number(m.eyeArea) || ((skinClarityIndex + potential) / 2));
+  const cheekbones = normalizeScore(Number(m.cheekbones) || ((jawlineIndex + potential) / 2));
+  const symmetry = normalizeScore(Number(m.symmetry) || ((eyeArea + cheekbones) / 2));
+  const facialThirds = normalizeScore(Number(m.facialThirds) || ((symmetry + potential) / 2));
+  const skinQuality = normalizeScore(Number(m.skinQuality) || skinClarityIndex);
 
   const overallScore = clamp(
     Math.round(
-      Number(parsed.overallScore) ||
+      normalizeScore(parsed.overallScore) ||
         (potential * 0.2 +
           jawlineIndex * 0.18 +
           eyeArea * 0.12 +
