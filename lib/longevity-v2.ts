@@ -36,6 +36,23 @@ export type FaceAnalyzeResponse = {
   notes: string[];
 };
 
+export type FaceVisionFeatures = {
+  source: "apple_vision";
+  schemaVersion: number;
+  faceConfidence: number;
+  faceAspectRatio: number;
+  interocularDistanceRatio: number;
+  mouthWidthRatio: number;
+  eyeOpennessRatio: number;
+  browSymmetryDelta: number;
+  eyeLineSymmetryDelta: number;
+  jawWidthRatio: number;
+  chinToMouthRatio: number;
+  facialThirdsBalance: number;
+  yawDegrees: number;
+  rollDegrees: number;
+};
+
 export const AVAILABLE_BODY_EXERCISE_IDS = [
   "body_front_squat",
   "body_deadlift",
@@ -838,32 +855,23 @@ export function buildBodyExercisePlan(input: {
   return { oneWeek, oneMonth };
 }
 
-export function buildFaceAnalysis(input: {
-  uid: string;
-  imageUrl: string;
+function buildFaceAnalysisFromSeed(input: {
+  seedBase: string;
   today: JsonObject;
   history: JsonObject[];
   healthRecord: JsonObject | null;
+  notes?: string[];
 }): FaceAnalyzeResponse {
-  const seedBase = [
-    input.uid,
-    input.imageUrl.trim(),
-    stableStringify(input.today),
-    stableStringify(input.history),
-    stableStringify(input.healthRecord),
-    "face",
-  ].join("|");
-
   const computed = pickComputed(input.today, input.healthRecord);
   const healthScore = toNumber(computed.healthScore, 70);
 
   const jawlineIndex = clamp(
-    Math.round(scoreFromSeed(seedBase + "|jawline", 38, 92) * 0.7 + healthScore * 0.3),
+    Math.round(scoreFromSeed(input.seedBase + "|jawline", 38, 92) * 0.7 + healthScore * 0.3),
     0,
     100
   );
   const skinClarityIndex = clamp(
-    Math.round(scoreFromSeed(seedBase + "|skin", 40, 94) * 0.72 + healthScore * 0.28),
+    Math.round(scoreFromSeed(input.seedBase + "|skin", 40, 94) * 0.72 + healthScore * 0.28),
     0,
     100
   );
@@ -936,11 +944,62 @@ export function buildFaceAnalysis(input: {
     },
     exercisePlan,
     notes: [
-      "Face plan generated from jawline, skin clarity, and recovery context.",
+      ...(input.notes ?? ["Face plan generated from jawline, skin clarity, and recovery context."]),
       "Jawline and skin scores are visual estimates, not medical measures.",
       `Face fat estimate: ${faceFatEstimate}.`,
     ],
   };
+}
+
+export function buildFaceAnalysis(input: {
+  uid: string;
+  imageUrl: string;
+  today: JsonObject;
+  history: JsonObject[];
+  healthRecord: JsonObject | null;
+}): FaceAnalyzeResponse {
+  const seedBase = [
+    input.uid,
+    input.imageUrl.trim(),
+    stableStringify(input.today),
+    stableStringify(input.history),
+    stableStringify(input.healthRecord),
+    "face",
+  ].join("|");
+
+  return buildFaceAnalysisFromSeed({
+    seedBase,
+    today: input.today,
+    history: input.history,
+    healthRecord: input.healthRecord,
+  });
+}
+
+export function buildFaceAnalysisFromVisionFeatures(input: {
+  uid: string;
+  visionFeatures: FaceVisionFeatures;
+  today: JsonObject;
+  history: JsonObject[];
+  healthRecord: JsonObject | null;
+}): FaceAnalyzeResponse {
+  const seedBase = [
+    input.uid,
+    stableStringify(input.visionFeatures),
+    stableStringify(input.today),
+    stableStringify(input.history),
+    stableStringify(input.healthRecord),
+    "face_vision_features",
+  ].join("|");
+
+  return buildFaceAnalysisFromSeed({
+    seedBase,
+    today: input.today,
+    history: input.history,
+    healthRecord: input.healthRecord,
+    notes: [
+      "Face plan generated from on-device facial structure signals and recovery context.",
+    ],
+  });
 }
 
 export function buildBodyAnalysis(input: {
