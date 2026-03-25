@@ -17,10 +17,27 @@ import {
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 
+type LocalFaceScores = {
+  jawlineIndex: number;
+  skinClarityIndex: number;
+  faceFatEstimate: "low" | "medium" | "high";
+  overallScore: number;
+  measurements: {
+    potential: number;
+    jawline: number;
+    eyeArea: number;
+    cheekbones: number;
+    symmetry: number;
+    facialThirds: number;
+    skinQuality: number;
+  };
+};
+
 type FaceAnalyzeRequest = {
   faceAnalysisMode?: "on_device" | "cloud_ai";
   imageUrl?: string;
   visionFeatures?: FaceVisionFeatures;
+  localScores?: LocalFaceScores;
   today: JsonObject;
   history: JsonObject[];
   availableExerciseIds: string[];
@@ -159,12 +176,39 @@ function parseVisionFeatures(value: unknown): FaceVisionFeatures | undefined {
   };
 }
 
+function parseLocalScores(value: unknown): LocalFaceScores | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const measurements = isPlainObject(value.measurements) ? value.measurements : {};
+  const faceFatEstimate =
+    value.faceFatEstimate === "low" || value.faceFatEstimate === "medium" || value.faceFatEstimate === "high"
+      ? value.faceFatEstimate
+      : undefined;
+  if (!faceFatEstimate) return undefined;
+
+  return {
+    jawlineIndex: normalizeScore(value.jawlineIndex),
+    skinClarityIndex: normalizeScore(value.skinClarityIndex),
+    faceFatEstimate,
+    overallScore: normalizeScore(value.overallScore),
+    measurements: {
+      potential: normalizeScore(measurements.potential),
+      jawline: normalizeScore(measurements.jawline),
+      eyeArea: normalizeScore(measurements.eyeArea),
+      cheekbones: normalizeScore(measurements.cheekbones),
+      symmetry: normalizeScore(measurements.symmetry),
+      facialThirds: normalizeScore(measurements.facialThirds),
+      skinQuality: normalizeScore(measurements.skinQuality),
+    },
+  };
+}
+
 function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   if (!isPlainObject(body)) return null;
   const {
     faceAnalysisMode,
     imageUrl,
     visionFeatures,
+    localScores,
     today,
     history,
     availableExerciseIds,
@@ -181,6 +225,7 @@ function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   );
   const normalizedVideoMap = parseFaceExerciseVideoMap(faceExerciseVideoMap, normalizedExerciseIds);
   const parsedVisionFeatures = parseVisionFeatures(visionFeatures);
+  const parsedLocalScores = parseLocalScores(localScores);
   const videoExerciseCatalog = normalizedVideoExercises.length
     ? normalizedVideoExercises
     : buildFallbackVideoExercisesFromMap(normalizedVideoMap, normalizedExerciseIds);
@@ -200,6 +245,7 @@ function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
     faceAnalysisMode: mode,
     imageUrl: parsedImageUrl,
     visionFeatures: parsedVisionFeatures,
+    localScores: parsedLocalScores,
     today,
     history,
     availableExerciseIds: normalizedExerciseIds,
@@ -247,6 +293,7 @@ async function persistFaceAnalysis(
             faceAnalysisMode: input.faceAnalysisMode ?? null,
             imageUrl: input.imageUrl ?? null,
             visionFeatures: input.visionFeatures ?? null,
+            localScores: input.localScores ?? null,
             today: input.today,
             history: input.history,
             source,
@@ -351,6 +398,7 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
 
 async function runFeatureFaceAnalysis(input: {
   visionFeatures: FaceVisionFeatures;
+  localScores?: LocalFaceScores;
   today: JsonObject;
   history: JsonObject[];
   healthRecord: JsonObject | null;
@@ -362,10 +410,13 @@ async function runFeatureFaceAnalysis(input: {
 
   const prompt = `You are an aesthetics and wellness analysis assistant. You will NOT receive a face image.
 You will receive Apple Vision-derived facial structure signals from on-device analysis.
+You may also receive deterministic local face scores already computed on-device.
+Use those local scores as the source of truth for numeric scoring when provided.
 Interpret them conservatively and produce wellness coaching output.
 
 Important:
 - The photo itself was not uploaded.
+- If localScores are provided, preserve their numeric values instead of inventing new ones.
 - Do not claim medical certainty.
 - Be conservative about skin quality because you do not have raw skin pixels.
 - Keep skinClarityIndex realistic and avoid extreme values unless strongly supported by context.
@@ -412,6 +463,7 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
     todayComputed: isPlainObject(input.today.computed) ? input.today.computed : {},
     historyDays: input.history.length,
     visionFeatures: input.visionFeatures,
+    localScores: input.localScores ?? null,
     availableFaceExercises: input.availableExerciseIds,
     faceExerciseVideoMap: input.faceExerciseVideoMap,
   });
@@ -439,11 +491,36 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
   const data = (await resp.json()) as any;
   const normalized = normalizeOpenAiFaceResponse(data);
   if (!normalized) return null;
-  normalized.notes = [
+  const merged = mergeOnDeviceLocalScores(normalized, input.localScores);
+  merged.notes = [
     "Face analysis interpreted from on-device Apple Vision structure signals.",
-    ...normalized.notes.filter(Boolean),
+    ...merged.notes.filter(Boolean),
   ].slice(0, 4);
-  return normalized;
+  return merged;
+}
+
+function mergeOnDeviceLocalScores(base: FaceAnalyzeResponse, localScores?: LocalFaceScores): FaceAnalyzeResponse {
+  if (!localScores) return base;
+  return {
+    ...base,
+    jawlineIndex: localScores.jawlineIndex,
+    skinClarityIndex: localScores.skinClarityIndex,
+    faceFatEstimate: localScores.faceFatEstimate,
+    overallScore: localScores.overallScore,
+    measurements: {
+      potential: localScores.measurements.potential,
+      jawline: localScores.measurements.jawline,
+      eyeArea: localScores.measurements.eyeArea,
+      cheekbones: localScores.measurements.cheekbones,
+      symmetry: localScores.measurements.symmetry,
+      facialThirds: localScores.measurements.facialThirds,
+      skinQuality: localScores.measurements.skinQuality,
+    },
+    notes: [
+      'Scores preserved from on-device face analysis.',
+      ...base.notes.filter(Boolean),
+    ].slice(0, 5),
+  };
 }
 
 function normalizeOpenAiFaceResponse(data: any): FaceAnalyzeResponse | null {
@@ -547,6 +624,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parsed.faceAnalysisMode === "on_device" && parsed.visionFeatures
         ? (await runFeatureFaceAnalysis({
             visionFeatures: parsed.visionFeatures,
+            localScores: parsed.localScores,
             today: parsed.today,
             history: parsed.history,
             healthRecord,
@@ -554,13 +632,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             availableFaceVideoExercises: parsed.availableFaceVideoExercises,
             faceExerciseVideoMap: parsed.faceExerciseVideoMap,
           })) ??
-          buildFaceAnalysisFromVisionFeatures({
-            uid: auth.uid,
-            visionFeatures: parsed.visionFeatures,
-            today: parsed.today,
-            history: parsed.history,
-            healthRecord,
-          })
+          mergeOnDeviceLocalScores(
+            buildFaceAnalysisFromVisionFeatures({
+              uid: auth.uid,
+              visionFeatures: parsed.visionFeatures,
+              today: parsed.today,
+              history: parsed.history,
+              healthRecord,
+            }),
+            parsed.localScores
+          )
         : (await runCloudImageFaceAnalysis({
             imageUrl: parsed.imageUrl!,
             today: parsed.today,
@@ -595,13 +676,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("POST /api/longevity/face-analyze-v2 failed", error);
     const fallback =
       parsed.faceAnalysisMode === "on_device" && parsed.visionFeatures
-        ? buildFaceAnalysisFromVisionFeatures({
-            uid: auth.uid,
-            visionFeatures: parsed.visionFeatures,
-            today: parsed.today,
-            history: parsed.history,
-            healthRecord,
-          })
+        ? mergeOnDeviceLocalScores(
+            buildFaceAnalysisFromVisionFeatures({
+              uid: auth.uid,
+              visionFeatures: parsed.visionFeatures,
+              today: parsed.today,
+              history: parsed.history,
+              healthRecord,
+            }),
+            parsed.localScores
+          )
         : buildFaceAnalysis({
             uid: auth.uid,
             imageUrl: parsed.imageUrl!,

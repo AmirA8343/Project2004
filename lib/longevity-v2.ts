@@ -36,6 +36,22 @@ export type FaceAnalyzeResponse = {
   notes: string[];
 };
 
+export type LocalFaceScores = {
+  jawlineIndex: number;
+  skinClarityIndex: number;
+  faceFatEstimate: FaceFatEstimate;
+  overallScore: number;
+  measurements: {
+    potential: number;
+    jawline: number;
+    eyeArea: number;
+    cheekbones: number;
+    symmetry: number;
+    facialThirds: number;
+    skinQuality: number;
+  };
+};
+
 export type FaceVisionFeatures = {
   source: "apple_vision";
   schemaVersion: number;
