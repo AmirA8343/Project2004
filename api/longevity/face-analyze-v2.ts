@@ -6,8 +6,10 @@ import {
   AVAILABLE_FACE_EXERCISE_IDS,
   buildFaceAnalysis,
   buildFaceAnalysisFromVisionFeatures,
+  deriveSkinAnalysisFromFaceScores,
   type FaceAnalyzeResponse,
   type FaceVisionFeatures,
+  type SkinAnalysis,
   getDateKey,
   isNonEmptyString,
   isObjectArray,
@@ -16,6 +18,8 @@ import {
 } from "../../lib/longevity-v2";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+
+type LocalSkinAnalysis = SkinAnalysis;
 
 type LocalFaceScores = {
   jawlineIndex: number;
@@ -38,6 +42,7 @@ type FaceAnalyzeRequest = {
   imageUrl?: string;
   visionFeatures?: FaceVisionFeatures;
   localScores?: LocalFaceScores;
+  skinAnalysis?: LocalSkinAnalysis;
   today: JsonObject;
   history: JsonObject[];
   availableExerciseIds: string[];
@@ -202,6 +207,19 @@ function parseLocalScores(value: unknown): LocalFaceScores | undefined {
   };
 }
 
+function parseSkinAnalysis(value: unknown): LocalSkinAnalysis | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const confidence = value.confidence === "high" || value.confidence === "medium" || value.confidence === "low" ? value.confidence : undefined;
+  if (!confidence) return undefined;
+  return {
+    dryness: normalizeScore(value.dryness),
+    acneRisk: normalizeScore(value.acneRisk),
+    pigmentation: normalizeScore(value.pigmentation),
+    sensitivity: normalizeScore(value.sensitivity),
+    confidence,
+  };
+}
+
 function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   if (!isPlainObject(body)) return null;
   const {
@@ -209,6 +227,7 @@ function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
     imageUrl,
     visionFeatures,
     localScores,
+    skinAnalysis,
     today,
     history,
     availableExerciseIds,
@@ -226,6 +245,7 @@ function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
   const normalizedVideoMap = parseFaceExerciseVideoMap(faceExerciseVideoMap, normalizedExerciseIds);
   const parsedVisionFeatures = parseVisionFeatures(visionFeatures);
   const parsedLocalScores = parseLocalScores(localScores);
+  const parsedSkinAnalysis = parseSkinAnalysis(skinAnalysis);
   const videoExerciseCatalog = normalizedVideoExercises.length
     ? normalizedVideoExercises
     : buildFallbackVideoExercisesFromMap(normalizedVideoMap, normalizedExerciseIds);
@@ -246,6 +266,7 @@ function parseFaceAnalyzeRequest(body: unknown): FaceAnalyzeRequest | null {
     imageUrl: parsedImageUrl,
     visionFeatures: parsedVisionFeatures,
     localScores: parsedLocalScores,
+    skinAnalysis: parsedSkinAnalysis,
     today,
     history,
     availableExerciseIds: normalizedExerciseIds,
@@ -294,6 +315,7 @@ async function persistFaceAnalysis(
             imageUrl: input.imageUrl ?? null,
             visionFeatures: input.visionFeatures ?? null,
             localScores: input.localScores ?? null,
+            skinAnalysis: input.skinAnalysis ?? null,
             today: input.today,
             history: input.history,
             source,
@@ -399,6 +421,7 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
 async function runFeatureFaceAnalysis(input: {
   visionFeatures: FaceVisionFeatures;
   localScores?: LocalFaceScores;
+  skinAnalysis?: LocalSkinAnalysis;
   today: JsonObject;
   history: JsonObject[];
   healthRecord: JsonObject | null;
@@ -464,6 +487,7 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
     historyDays: input.history.length,
     visionFeatures: input.visionFeatures,
     localScores: input.localScores ?? null,
+    skinAnalysis: input.skinAnalysis ?? null,
     availableFaceExercises: input.availableExerciseIds,
     faceExerciseVideoMap: input.faceExerciseVideoMap,
   });
@@ -491,12 +515,24 @@ ${input.availableFaceVideoExercises.map((item) => `- ${item.exerciseId} -> ${ite
   const data = (await resp.json()) as any;
   const normalized = normalizeOpenAiFaceResponse(data);
   if (!normalized) return null;
-  const merged = mergeOnDeviceLocalScores(normalized, input.localScores);
+  const merged = mergeOnDeviceSkinAnalysis(mergeOnDeviceLocalScores(normalized, input.localScores), input.skinAnalysis);
   merged.notes = [
     "Face analysis interpreted from on-device Apple Vision structure signals.",
     ...merged.notes.filter(Boolean),
   ].slice(0, 4);
   return merged;
+}
+
+function mergeOnDeviceSkinAnalysis(base: FaceAnalyzeResponse, skinAnalysis?: LocalSkinAnalysis): FaceAnalyzeResponse {
+  if (!skinAnalysis) return base;
+  return {
+    ...base,
+    skinAnalysis,
+    notes: [
+      'Skin analysis preserved from local face-analysis signals.',
+      ...base.notes.filter(Boolean),
+    ].slice(0, 5),
+  };
 }
 
 function mergeOnDeviceLocalScores(base: FaceAnalyzeResponse, localScores?: LocalFaceScores): FaceAnalyzeResponse {
@@ -582,6 +618,24 @@ function normalizeOpenAiFaceResponse(data: any): FaceAnalyzeResponse | null {
     skinClarityIndex,
     faceFatEstimate,
     overallScore,
+    skinAnalysis: isPlainObject(parsed.skinAnalysis)
+      ? {
+          dryness: normalizeScore(parsed.skinAnalysis.dryness),
+          acneRisk: normalizeScore(parsed.skinAnalysis.acneRisk),
+          pigmentation: normalizeScore(parsed.skinAnalysis.pigmentation),
+          sensitivity: normalizeScore(parsed.skinAnalysis.sensitivity),
+          confidence:
+            parsed.skinAnalysis.confidence === "high" || parsed.skinAnalysis.confidence === "medium" || parsed.skinAnalysis.confidence === "low"
+              ? parsed.skinAnalysis.confidence
+              : "medium",
+        }
+      : deriveSkinAnalysisFromFaceScores({
+          skinClarityIndex,
+          faceFatEstimate,
+          skinQuality,
+          potential,
+          confidence: "high",
+        }),
     measurements: {
       potential,
       jawline: jawlineIndex,
@@ -625,6 +679,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? (await runFeatureFaceAnalysis({
             visionFeatures: parsed.visionFeatures,
             localScores: parsed.localScores,
+            skinAnalysis: parsed.skinAnalysis,
             today: parsed.today,
             history: parsed.history,
             healthRecord,
@@ -632,7 +687,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             availableFaceVideoExercises: parsed.availableFaceVideoExercises,
             faceExerciseVideoMap: parsed.faceExerciseVideoMap,
           })) ??
-          mergeOnDeviceLocalScores(
+          mergeOnDeviceSkinAnalysis(mergeOnDeviceLocalScores(
             buildFaceAnalysisFromVisionFeatures({
               uid: auth.uid,
               visionFeatures: parsed.visionFeatures,
@@ -641,7 +696,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               healthRecord,
             }),
             parsed.localScores
-          )
+          ), parsed.skinAnalysis)
         : (await runCloudImageFaceAnalysis({
             imageUrl: parsed.imageUrl!,
             today: parsed.today,
@@ -676,7 +731,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("POST /api/longevity/face-analyze-v2 failed", error);
     const fallback =
       parsed.faceAnalysisMode === "on_device" && parsed.visionFeatures
-        ? mergeOnDeviceLocalScores(
+        ? mergeOnDeviceSkinAnalysis(mergeOnDeviceLocalScores(
             buildFaceAnalysisFromVisionFeatures({
               uid: auth.uid,
               visionFeatures: parsed.visionFeatures,
@@ -685,7 +740,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               healthRecord,
             }),
             parsed.localScores
-          )
+          ), parsed.skinAnalysis)
         : buildFaceAnalysis({
             uid: auth.uid,
             imageUrl: parsed.imageUrl!,

@@ -2,11 +2,20 @@ export type JsonObject = Record<string, unknown>;
 
 export type FaceFatEstimate = "low" | "medium" | "high";
 
+export type SkinAnalysis = {
+  dryness: number;
+  acneRisk: number;
+  pigmentation: number;
+  sensitivity: number;
+  confidence: "low" | "medium" | "high";
+};
+
 export type FaceAnalyzeResponse = {
   jawlineIndex: number;
   skinClarityIndex: number;
   faceFatEstimate: FaceFatEstimate;
   overallScore: number;
+  skinAnalysis: SkinAnalysis;
   measurements: {
     potential: number;
     jawline: number;
@@ -317,6 +326,35 @@ function scoreFromSeed(seed: string, min: number, max: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export function deriveSkinAnalysisFromFaceScores(input: {
+  skinClarityIndex: number;
+  faceFatEstimate: FaceFatEstimate;
+  skinQuality?: number;
+  potential?: number;
+  confidence?: SkinAnalysis["confidence"];
+}): SkinAnalysis {
+  const skinClarity = clamp(Math.round(input.skinClarityIndex), 0, 100);
+  const skinQuality = clamp(Math.round(input.skinQuality ?? skinClarity), 0, 100);
+  const potential = clamp(Math.round(input.potential ?? 60), 0, 100);
+
+  const drynessBase = 100 - Math.round(skinClarity * 0.72 + skinQuality * 0.18);
+  const dryness = clamp(drynessBase + (input.faceFatEstimate === "high" ? 8 : input.faceFatEstimate === "medium" ? 3 : 0), 0, 100);
+
+  const acneBase = input.faceFatEstimate === "high" ? 56 : input.faceFatEstimate === "medium" ? 38 : 20;
+  const acneRisk = clamp(acneBase + Math.round((100 - skinClarity) * 0.18), 0, 100);
+
+  const pigmentation = clamp(100 - Math.round(skinClarity * 0.7 + skinQuality * 0.12), 0, 100);
+  const sensitivity = clamp(Math.round(dryness * 0.48 + (100 - skinQuality) * 0.22 + (100 - potential) * 0.1), 0, 100);
+
+  return {
+    dryness,
+    acneRisk,
+    pigmentation,
+    sensitivity,
+    confidence: input.confidence ?? "medium",
+  };
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -927,6 +965,13 @@ function buildFaceAnalysisFromSeed(input: {
     skinClarityIndex,
     faceFatEstimate,
     overallScore,
+    skinAnalysis: deriveSkinAnalysisFromFaceScores({
+      skinClarityIndex,
+      faceFatEstimate,
+      skinQuality,
+      potential,
+      confidence: "medium",
+    }),
     measurements: {
       potential,
       jawline: jawlineIndex,
