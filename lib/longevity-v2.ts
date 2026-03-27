@@ -485,6 +485,104 @@ export function normalizeBodyProfile(value: unknown): BodyProfile | null {
   };
 }
 
+
+const BODY_LEVEL_ORDER = { low: 0, moderate: 1, high: 2 } as const;
+export function calibrateVisionBodyProfile(input: {
+  rawProfile?: BodyProfile | null;
+  postureScore: number;
+  muscleDefinitionScore: number;
+  bodyFatRangeEstimate: string;
+  healthScore: number;
+}): BodyProfile {
+  const signalProfile = deriveBodyProfileFromBodySignals({
+    postureScore: input.postureScore,
+    muscleDefinitionScore: input.muscleDefinitionScore,
+    bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+    healthScore: input.healthScore,
+  });
+  const rawProfile = normalizeBodyProfile(input.rawProfile) ?? signalProfile;
+  const fatText = input.bodyFatRangeEstimate.toLowerCase();
+  const higherFat = /22|24|26|28|30|higher/.test(fatText);
+  const lean = /10|12|14|16|lean|athletic/.test(fatText);
+
+  let primaryGoal: BodyProfile["primaryGoal"] = rawProfile.primaryGoal;
+  if (primaryGoal === "athletic" && !(lean && input.muscleDefinitionScore >= 74 && input.postureScore >= 66)) {
+    primaryGoal = input.muscleDefinitionScore >= 68 && !higherFat ? "muscle_gain" : signalProfile.primaryGoal;
+  }
+  if (primaryGoal === "muscle_gain" && higherFat && input.muscleDefinitionScore < 64) {
+    primaryGoal = "recomp";
+  }
+  if (higherFat && primaryGoal === "athletic") {
+    primaryGoal = "fat_loss";
+  }
+
+  let trainingReadiness: BodyProfile["trainingReadiness"] = rawProfile.trainingReadiness;
+  if (trainingReadiness === "advanced" && !(input.muscleDefinitionScore >= 78 && input.postureScore >= 72 && input.healthScore >= 74)) {
+    trainingReadiness = input.healthScore >= 62 ? "builder" : "starter";
+  }
+  if (trainingReadiness === "builder" && (input.healthScore < 56 || input.postureScore < 54)) {
+    trainingReadiness = "starter";
+  }
+
+  const mobilityNeed: BodyProfile["mobilityNeed"] =
+    BODY_LEVEL_ORDER[rawProfile.mobilityNeed] > BODY_LEVEL_ORDER[signalProfile.mobilityNeed]
+      ? rawProfile.mobilityNeed
+      : signalProfile.mobilityNeed;
+  const conditioningNeed: BodyProfile["conditioningNeed"] =
+    BODY_LEVEL_ORDER[rawProfile.conditioningNeed] > BODY_LEVEL_ORDER[signalProfile.conditioningNeed]
+      ? rawProfile.conditioningNeed
+      : signalProfile.conditioningNeed;
+
+  let postureFocus: BodyProfile["postureFocus"] = rawProfile.postureFocus;
+  if (postureFocus === "full_body" && signalProfile.postureFocus !== "full_body") {
+    postureFocus = signalProfile.postureFocus;
+  }
+  if (input.postureScore < 58) {
+    postureFocus = signalProfile.postureFocus;
+  }
+
+  let impactTolerance: BodyProfile["impactTolerance"] = rawProfile.impactTolerance;
+  if (impactTolerance === "high" && (higherFat || mobilityNeed !== "low" || input.postureScore < 72)) {
+    impactTolerance = input.postureScore >= 64 && !higherFat ? "moderate" : "low";
+  }
+
+  let upperBodyEmphasis = rawProfile.upperBodyEmphasis;
+  let lowerBodyEmphasis = rawProfile.lowerBodyEmphasis;
+  if (primaryGoal === "fat_loss") {
+    lowerBodyEmphasis = BODY_LEVEL_ORDER[lowerBodyEmphasis] < BODY_LEVEL_ORDER.high ? "high" : lowerBodyEmphasis;
+  }
+  if (primaryGoal === "muscle_gain" && input.muscleDefinitionScore >= 68) {
+    upperBodyEmphasis = BODY_LEVEL_ORDER[upperBodyEmphasis] < BODY_LEVEL_ORDER.moderate ? "moderate" : upperBodyEmphasis;
+  }
+
+  let trainingSplitPreference: BodyProfile["trainingSplitPreference"] = rawProfile.trainingSplitPreference;
+  if (trainingReadiness === "starter" || mobilityNeed === "high") {
+    trainingSplitPreference = "full_body";
+  } else if (conditioningNeed === "high" && primaryGoal === "fat_loss") {
+    trainingSplitPreference = "conditioning_mix";
+  } else if (!(primaryGoal === "athletic" || primaryGoal === "muscle_gain" || trainingReadiness === "advanced")) {
+    trainingSplitPreference = signalProfile.trainingSplitPreference;
+  }
+
+  let equipmentBias: BodyProfile["equipmentBias"] = rawProfile.equipmentBias;
+  if (primaryGoal === "fat_loss" && equipmentBias === "gym") {
+    equipmentBias = "both";
+  }
+
+  return {
+    primaryGoal,
+    trainingReadiness,
+    mobilityNeed,
+    conditioningNeed,
+    postureFocus,
+    impactTolerance,
+    upperBodyEmphasis,
+    lowerBodyEmphasis,
+    trainingSplitPreference,
+    equipmentBias,
+  };
+}
+
 export function deriveBodyProfileFromBodySignals(input: {
   postureScore: number;
   muscleDefinitionScore: number;

@@ -9,6 +9,7 @@ import {
   buildBodyExercisePlan,
   buildBodyPlanRecommendation,
   buildStructuredBodyWorkoutPlan,
+  calibrateVisionBodyProfile,
   deriveBodyProfileFromBodySignals,
   normalizeBodyProfile,
   getDateKey,
@@ -201,6 +202,9 @@ Rules:
 - exercisePlan.oneWeek must have exactly 7 day lines starting with Mon..Sun.
 - Every day line must contain 4+ exercises and include REP/TIME prescriptions.
 - bodyProfile must be internally consistent with the visible physique and training needs.
+- Do NOT default to athletic unless the physique looks clearly lean, trained, and visually performance-oriented. If uncertain between athletic and recomp, choose recomp.
+- Do NOT default to advanced unless posture and visible training readiness look clearly above average. If uncertain between advanced and builder, choose builder.
+- postureFocus should name the dominant correction need, not a generic default. Use full_body only when the whole chain clearly needs broad correction.
 - Program must reflect body type: fat-loss, recomposition, muscle-gain, or athletic performance emphasis.
 - Include posture correction if postureScore < 62 and conditioning bias if body-fat estimate is high.
 - exercisePlan.oneMonth must have exactly 4 concise progression lines.
@@ -261,14 +265,13 @@ Rules:
   const muscleDefinitionScore = clamp(Math.round(Number(parsed.muscleDefinitionScore) || 0), 0, 100);
   const notes = toStringArray(parsed.notes).slice(0, 4);
   const healthScore = clamp(Math.round(Number((computed as any)?.healthScore) || 70), 0, 100);
-  const bodyProfile =
-    normalizeBodyProfile((parsed as any).bodyProfile) ??
-    deriveBodyProfileFromBodySignals({
-      postureScore,
-      muscleDefinitionScore,
-      bodyFatRangeEstimate,
-      healthScore,
-    });
+  const bodyProfile = calibrateVisionBodyProfile({
+    rawProfile: normalizeBodyProfile((parsed as any).bodyProfile),
+    postureScore,
+    muscleDefinitionScore,
+    bodyFatRangeEstimate,
+    healthScore,
+  });
 
   const fallbackPlan = buildBodyExercisePlan({
     postureScore,
