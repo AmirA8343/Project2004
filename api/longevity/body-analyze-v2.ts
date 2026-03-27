@@ -9,6 +9,8 @@ import {
   buildBodyExercisePlan,
   buildBodyPlanRecommendation,
   buildStructuredBodyWorkoutPlan,
+  deriveBodyProfileFromBodySignals,
+  normalizeBodyProfile,
   getDateKey,
   isNonEmptyString,
   isObjectArray,
@@ -173,6 +175,18 @@ Return STRICT JSON only:
   "bodyFatRangeEstimate": "string",
   "postureScore": number,            // 0..100
   "muscleDefinitionScore": number,   // 0..100
+  "bodyProfile": {
+    "primaryGoal": "fat_loss" | "recomp" | "muscle_gain" | "athletic",
+    "trainingReadiness": "starter" | "builder" | "advanced",
+    "mobilityNeed": "low" | "moderate" | "high",
+    "conditioningNeed": "low" | "moderate" | "high",
+    "postureFocus": "upper_chain" | "core_stack" | "hips" | "full_body",
+    "impactTolerance": "low" | "moderate" | "high",
+    "upperBodyEmphasis": "low" | "moderate" | "high",
+    "lowerBodyEmphasis": "low" | "moderate" | "high",
+    "trainingSplitPreference": "full_body" | "upper_lower" | "conditioning_mix",
+    "equipmentBias": "gym" | "home" | "both"
+  },
   "exercisePlan": {
     "oneWeek": string[],
     "oneMonth": string[]
@@ -186,7 +200,8 @@ Rules:
 - postureScore and muscleDefinitionScore must be 0..100.
 - exercisePlan.oneWeek must have exactly 7 day lines starting with Mon..Sun.
 - Every day line must contain 4+ exercises and include REP/TIME prescriptions.
-- Program must reflect body type: fat-loss, recomposition, or athletic performance emphasis.
+- bodyProfile must be internally consistent with the visible physique and training needs.
+- Program must reflect body type: fat-loss, recomposition, muscle-gain, or athletic performance emphasis.
 - Include posture correction if postureScore < 62 and conditioning bias if body-fat estimate is high.
 - exercisePlan.oneMonth must have exactly 4 concise progression lines.
 - Use ONLY exercise names from this allowed catalog: ${AVAILABLE_BODY_EXERCISE_IDS.join(", ")}.`;
@@ -245,24 +260,36 @@ Rules:
   const postureScore = clamp(Math.round(Number(parsed.postureScore) || 0), 0, 100);
   const muscleDefinitionScore = clamp(Math.round(Number(parsed.muscleDefinitionScore) || 0), 0, 100);
   const notes = toStringArray(parsed.notes).slice(0, 4);
+  const healthScore = clamp(Math.round(Number((computed as any)?.healthScore) || 70), 0, 100);
+  const bodyProfile =
+    normalizeBodyProfile((parsed as any).bodyProfile) ??
+    deriveBodyProfileFromBodySignals({
+      postureScore,
+      muscleDefinitionScore,
+      bodyFatRangeEstimate,
+      healthScore,
+    });
 
   const fallbackPlan = buildBodyExercisePlan({
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
-    healthScore: clamp(Math.round(Number((computed as any)?.healthScore) || 70), 0, 100),
+    healthScore,
+    bodyProfile,
   });
   const recommendation = buildBodyPlanRecommendation({
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
-    healthScore: clamp(Math.round(Number((computed as any)?.healthScore) || 70), 0, 100),
+    healthScore,
+    bodyProfile,
   });
   const structuredPlan = buildStructuredBodyWorkoutPlan({
     recommendation,
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
+    bodyProfile,
   });
 
   const e = isPlainObject((parsed as any).exercisePlan) ? (parsed as any).exercisePlan : {};
@@ -274,6 +301,7 @@ Rules:
     bodyFatRangeEstimate,
     postureScore,
     muscleDefinitionScore,
+    bodyProfile,
     recommendation,
     structuredPlan,
     exercisePlan: fallbackPlan,

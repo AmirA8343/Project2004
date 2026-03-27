@@ -1,9 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { requireAuth } from "../../lib/auth";
+import type { BodyProfile } from "../../lib/longevity-v2";
 import {
   BodyPlanEnvironment,
   BodyPlanFocus,
   BodyPlanPace,
+  normalizeBodyProfile,
   applyBodyPlanPreferences,
   buildBodyPlanRecommendation,
   buildMissedDayQuickWorkout,
@@ -14,6 +16,7 @@ type RequestShape = {
   bodyFatRangeEstimate: string;
   postureScore: number;
   muscleDefinitionScore: number;
+  bodyProfile?: BodyProfile;
   missedSessions7d?: number;
   adherenceRate?: number;
   preferences?: {
@@ -40,6 +43,7 @@ function parseRequest(body: unknown): RequestShape | null {
     bodyFatRangeEstimate: body.bodyFatRangeEstimate.trim(),
     postureScore: clamp(Math.round(Number(body.postureScore)), 0, 100),
     muscleDefinitionScore: clamp(Math.round(Number(body.muscleDefinitionScore)), 0, 100),
+    bodyProfile: normalizeBodyProfile(body.bodyProfile) ?? undefined,
     missedSessions7d: Number.isFinite(Number(body.missedSessions7d))
       ? clamp(Math.round(Number(body.missedSessions7d)), 0, 7)
       : undefined,
@@ -84,6 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     muscleDefinitionScore: parsed.muscleDefinitionScore,
     bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
     healthScore: 70,
+    bodyProfile: parsed.bodyProfile ?? null,
   });
   const recommendation = applyBodyPlanPreferences(baseRecommendation, parsed.preferences);
   const workout = buildMissedDayQuickWorkout({

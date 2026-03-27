@@ -1,10 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { requireAuth } from "../../lib/auth";
+import type { BodyProfile } from "../../lib/longevity-v2";
 import {
   BodyAnalyzeResponse,
   BodyPlanEnvironment,
   BodyPlanFocus,
   BodyPlanPace,
+  deriveBodyProfileFromBodySignals,
+  normalizeBodyProfile,
   applyBodyPlanPreferences,
   buildBodyExercisePlan,
   buildBodyPlanRecommendation,
@@ -16,6 +19,7 @@ type BodyPlanGenerateRequest = {
   bodyFatRangeEstimate: string;
   postureScore: number;
   muscleDefinitionScore: number;
+  bodyProfile?: BodyProfile;
   preferences?: {
     pace?: BodyPlanPace;
     focus?: BodyPlanFocus;
@@ -58,6 +62,7 @@ function parseRequest(body: unknown): BodyPlanGenerateRequest | null {
     bodyFatRangeEstimate: body.bodyFatRangeEstimate.trim(),
     postureScore: clamp(Math.round(Number(body.postureScore)), 0, 100),
     muscleDefinitionScore: clamp(Math.round(Number(body.muscleDefinitionScore)), 0, 100),
+    bodyProfile: normalizeBodyProfile(body.bodyProfile) ?? undefined,
     preferences: {
       pace,
       focus,
@@ -81,11 +86,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Invalid payload" });
   }
 
+  const bodyProfile = normalizeBodyProfile(parsed.bodyProfile) ?? null;
+
   const baseRecommendation = buildBodyPlanRecommendation({
     postureScore: parsed.postureScore,
     muscleDefinitionScore: parsed.muscleDefinitionScore,
     bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
     healthScore: 70,
+    bodyProfile,
   });
   const recommendation = applyBodyPlanPreferences(baseRecommendation, parsed.preferences);
   const structuredPlan = buildStructuredBodyWorkoutPlan({
@@ -93,6 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     postureScore: parsed.postureScore,
     muscleDefinitionScore: parsed.muscleDefinitionScore,
     bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
+    bodyProfile,
     preferences: parsed.preferences,
   });
   const exercisePlan = buildBodyExercisePlan({
@@ -100,12 +109,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     muscleDefinitionScore: parsed.muscleDefinitionScore,
     bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
     healthScore: 70,
+    bodyProfile,
   });
 
   const result: BodyAnalyzeResponse = {
     bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
     postureScore: parsed.postureScore,
     muscleDefinitionScore: parsed.muscleDefinitionScore,
+    bodyProfile:
+      bodyProfile ??
+      deriveBodyProfileFromBodySignals({
+        postureScore: parsed.postureScore,
+        muscleDefinitionScore: parsed.muscleDefinitionScore,
+        bodyFatRangeEstimate: parsed.bodyFatRangeEstimate,
+        healthScore: 70,
+      }),
     recommendation,
     structuredPlan,
     exercisePlan,

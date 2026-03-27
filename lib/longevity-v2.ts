@@ -180,10 +180,24 @@ export const AVAILABLE_FACE_EXERCISE_IDS = [
   "technique_audit",
 ] as const;
 
+export type BodyProfile = {
+  primaryGoal: "fat_loss" | "recomp" | "muscle_gain" | "athletic";
+  trainingReadiness: "starter" | "builder" | "advanced";
+  mobilityNeed: "low" | "moderate" | "high";
+  conditioningNeed: "low" | "moderate" | "high";
+  postureFocus: "upper_chain" | "core_stack" | "hips" | "full_body";
+  impactTolerance: "low" | "moderate" | "high";
+  upperBodyEmphasis: "low" | "moderate" | "high";
+  lowerBodyEmphasis: "low" | "moderate" | "high";
+  trainingSplitPreference: "full_body" | "upper_lower" | "conditioning_mix";
+  equipmentBias: "gym" | "home" | "both";
+};
+
 export type BodyAnalyzeResponse = {
   bodyFatRangeEstimate: string;
   postureScore: number;
   muscleDefinitionScore: number;
+  bodyProfile: BodyProfile;
   recommendation: BodyPlanRecommendation;
   structuredPlan: StructuredBodyWorkoutPlan;
   exercisePlan: {
@@ -376,44 +390,223 @@ function parseRiskFlags(value: unknown): string[] {
   return value.filter((entry) => typeof entry === "string") as string[];
 }
 
+export function normalizeBodyProfile(value: unknown): BodyProfile | null {
+  if (!isPlainObject(value)) return null;
+
+  const primaryGoal =
+    value.primaryGoal === "fat_loss" ||
+    value.primaryGoal === "recomp" ||
+    value.primaryGoal === "muscle_gain" ||
+    value.primaryGoal === "athletic"
+      ? value.primaryGoal
+      : null;
+  const trainingReadiness =
+    value.trainingReadiness === "starter" ||
+    value.trainingReadiness === "builder" ||
+    value.trainingReadiness === "advanced"
+      ? value.trainingReadiness
+      : null;
+  const mobilityNeed =
+    value.mobilityNeed === "low" ||
+    value.mobilityNeed === "moderate" ||
+    value.mobilityNeed === "high"
+      ? value.mobilityNeed
+      : null;
+  const conditioningNeed =
+    value.conditioningNeed === "low" ||
+    value.conditioningNeed === "moderate" ||
+    value.conditioningNeed === "high"
+      ? value.conditioningNeed
+      : null;
+  const postureFocus =
+    value.postureFocus === "upper_chain" ||
+    value.postureFocus === "core_stack" ||
+    value.postureFocus === "hips" ||
+    value.postureFocus === "full_body"
+      ? value.postureFocus
+      : null;
+  const impactTolerance =
+    value.impactTolerance === "low" ||
+    value.impactTolerance === "moderate" ||
+    value.impactTolerance === "high"
+      ? value.impactTolerance
+      : null;
+  const upperBodyEmphasis =
+    value.upperBodyEmphasis === "low" ||
+    value.upperBodyEmphasis === "moderate" ||
+    value.upperBodyEmphasis === "high"
+      ? value.upperBodyEmphasis
+      : null;
+  const lowerBodyEmphasis =
+    value.lowerBodyEmphasis === "low" ||
+    value.lowerBodyEmphasis === "moderate" ||
+    value.lowerBodyEmphasis === "high"
+      ? value.lowerBodyEmphasis
+      : null;
+  const trainingSplitPreference =
+    value.trainingSplitPreference === "full_body" ||
+    value.trainingSplitPreference === "upper_lower" ||
+    value.trainingSplitPreference === "conditioning_mix"
+      ? value.trainingSplitPreference
+      : null;
+  const equipmentBias =
+    value.equipmentBias === "gym" ||
+    value.equipmentBias === "home" ||
+    value.equipmentBias === "both"
+      ? value.equipmentBias
+      : null;
+
+  if (
+    !primaryGoal ||
+    !trainingReadiness ||
+    !mobilityNeed ||
+    !conditioningNeed ||
+    !postureFocus ||
+    !impactTolerance ||
+    !upperBodyEmphasis ||
+    !lowerBodyEmphasis ||
+    !trainingSplitPreference ||
+    !equipmentBias
+  ) {
+    return null;
+  }
+
+  return {
+    primaryGoal,
+    trainingReadiness,
+    mobilityNeed,
+    conditioningNeed,
+    postureFocus,
+    impactTolerance,
+    upperBodyEmphasis,
+    lowerBodyEmphasis,
+    trainingSplitPreference,
+    equipmentBias,
+  };
+}
+
+export function deriveBodyProfileFromBodySignals(input: {
+  postureScore: number;
+  muscleDefinitionScore: number;
+  bodyFatRangeEstimate: string;
+  healthScore: number;
+}): BodyProfile {
+  const fatText = input.bodyFatRangeEstimate.toLowerCase();
+  const higherFat = /22|24|26|28|30|higher/.test(fatText);
+  const lean = /10|12|14|16|lean|athletic/.test(fatText);
+
+  const primaryGoal: BodyProfile["primaryGoal"] = higherFat
+    ? "fat_loss"
+    : lean && input.muscleDefinitionScore >= 72
+      ? "athletic"
+      : input.muscleDefinitionScore < 56
+        ? "muscle_gain"
+        : "recomp";
+
+  const mobilityNeed: BodyProfile["mobilityNeed"] =
+    input.postureScore < 56 ? "high" : input.postureScore < 70 ? "moderate" : "low";
+  const conditioningNeed: BodyProfile["conditioningNeed"] =
+    higherFat || input.healthScore < 58 ? "high" : primaryGoal === "athletic" || input.healthScore < 72 ? "moderate" : "low";
+  const trainingReadiness: BodyProfile["trainingReadiness"] =
+    input.healthScore < 58 || mobilityNeed === "high" ? "starter" : input.healthScore < 80 ? "builder" : "advanced";
+  const postureFocus: BodyProfile["postureFocus"] =
+    mobilityNeed === "high"
+      ? "full_body"
+      : input.postureScore < 64
+        ? "upper_chain"
+        : input.muscleDefinitionScore < 58
+          ? "core_stack"
+          : higherFat
+            ? "hips"
+            : "core_stack";
+  const impactTolerance: BodyProfile["impactTolerance"] =
+    higherFat || mobilityNeed === "high" ? "low" : input.healthScore < 76 ? "moderate" : "high";
+  const upperBodyEmphasis: BodyProfile["upperBodyEmphasis"] =
+    primaryGoal === "muscle_gain" || primaryGoal === "athletic" ? "high" : input.muscleDefinitionScore < 62 ? "moderate" : "low";
+  const lowerBodyEmphasis: BodyProfile["lowerBodyEmphasis"] =
+    primaryGoal === "fat_loss" || higherFat ? "high" : primaryGoal === "athletic" ? "moderate" : "low";
+  const trainingSplitPreference: BodyProfile["trainingSplitPreference"] =
+    mobilityNeed === "high" || trainingReadiness === "starter"
+      ? "full_body"
+      : conditioningNeed === "high" && primaryGoal === "fat_loss"
+        ? "conditioning_mix"
+        : "upper_lower";
+  const equipmentBias: BodyProfile["equipmentBias"] =
+    primaryGoal === "muscle_gain" || primaryGoal === "athletic" ? "gym" : primaryGoal === "fat_loss" ? "both" : "both";
+
+  return {
+    primaryGoal,
+    trainingReadiness,
+    mobilityNeed,
+    conditioningNeed,
+    postureFocus,
+    impactTolerance,
+    upperBodyEmphasis,
+    lowerBodyEmphasis,
+    trainingSplitPreference,
+    equipmentBias,
+  };
+}
+
 export function buildBodyPlanRecommendation(input: {
   postureScore: number;
   muscleDefinitionScore: number;
   bodyFatRangeEstimate: string;
   healthScore: number;
+  bodyProfile?: BodyProfile | null;
 }): BodyPlanRecommendation {
-  const fatText = input.bodyFatRangeEstimate.toLowerCase();
-  const needsFatLoss = /22|24|26|28|30|higher/.test(fatText);
-  const needsMobilityBias = input.postureScore < 62;
-  const lowDefinition = input.muscleDefinitionScore < 58;
+  const bodyProfile =
+    normalizeBodyProfile(input.bodyProfile) ??
+    deriveBodyProfileFromBodySignals({
+      postureScore: input.postureScore,
+      muscleDefinitionScore: input.muscleDefinitionScore,
+      bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+      healthScore: input.healthScore,
+    });
 
-  const focus: BodyPlanFocus = needsMobilityBias
-    ? "balanced"
-    : needsFatLoss
-      ? "balanced"
-      : lowDefinition
+  const focus: BodyPlanFocus =
+    bodyProfile.mobilityNeed === "high"
+      ? "mobility"
+      : bodyProfile.primaryGoal === "muscle_gain"
         ? "strength"
-        : "strength";
+        : bodyProfile.primaryGoal === "athletic"
+          ? bodyProfile.conditioningNeed === "high" ? "balanced" : "strength"
+          : bodyProfile.primaryGoal === "fat_loss"
+            ? "balanced"
+            : bodyProfile.conditioningNeed === "moderate"
+              ? "balanced"
+              : "strength";
 
   const pace: BodyPlanPace =
-    input.healthScore < 58 || needsMobilityBias ? "easy" : input.healthScore < 76 ? "balanced" : "fast";
+    bodyProfile.trainingReadiness === "starter" || bodyProfile.impactTolerance === "low"
+      ? "easy"
+      : bodyProfile.trainingReadiness === "builder"
+        ? "balanced"
+        : "fast";
 
-  const daysPerWeek = pace === "easy" ? 3 : 4;
-  const sessionMinutes = pace === "easy" ? 30 : pace === "balanced" ? 35 : 45;
-  const environment: BodyPlanEnvironment = needsFatLoss ? "both" : "gym";
-  const structureType: BodyPlanRecommendation["structureType"] =
-    daysPerWeek <= 3 ? "full_body" : "upper_lower";
+  const daysPerWeek =
+    bodyProfile.trainingSplitPreference === "full_body"
+      ? 3
+      : bodyProfile.trainingReadiness === "advanced"
+        ? 4
+        : 4;
+  const sessionMinutes =
+    pace === "easy" ? 30 : focus === "mobility" ? 30 : pace === "balanced" ? 38 : 45;
+  const environment: BodyPlanEnvironment = bodyProfile.equipmentBias;
+  const structureType: BodyPlanRecommendation["structureType"] = bodyProfile.trainingSplitPreference;
 
   const reasons = [
-    needsFatLoss
-      ? "Conditioning and step-support work should stay in the weekly plan."
-      : "Strength work should be the main driver of progress.",
-    needsMobilityBias
-      ? "Posture correction needs to be included multiple times per week."
-      : "Movement quality looks stable enough for regular loading.",
-    pace === "easy"
-      ? "Shorter sessions improve adherence while recovery catches up."
-      : "Moderate session length gives enough room for quality strength work.",
+    bodyProfile.primaryGoal === "fat_loss"
+      ? "Fat-loss support and conditioning should stay in the weekly plan."
+      : bodyProfile.primaryGoal === "muscle_gain"
+        ? "Muscle-building work should be the main driver of progress."
+        : bodyProfile.primaryGoal === "athletic"
+          ? "Athletic performance needs both strength and engine work."
+          : "Recomposition works best with balanced strength and conditioning support.",
+    bodyProfile.mobilityNeed === "high"
+      ? `Mobility and ${bodyProfile.postureFocus.replace("_", " ")} correction should show up multiple times each week.`
+      : `Posture focus is biased toward ${bodyProfile.postureFocus.replace("_", " ")}.`,
+    `Plan split is ${bodyProfile.trainingSplitPreference.replace("_", " ")} with a ${pace} pace in a ${environment} environment.`,
   ];
 
   return {
@@ -462,17 +655,28 @@ export function buildStructuredBodyWorkoutPlan(input: {
   postureScore: number;
   muscleDefinitionScore: number;
   bodyFatRangeEstimate: string;
+  bodyProfile?: BodyProfile | null;
   preferences?: BodyPlanPreferences | null;
 }): StructuredBodyWorkoutPlan {
   const recommendation = input.recommendation;
-  const needsMobilityBias = input.postureScore < 62;
-  const needsFatLoss = /22|24|26|28|30|higher/.test(input.bodyFatRangeEstimate.toLowerCase());
-  const kneeFriendly = Boolean(input.preferences?.kneeFriendly);
-  const backFriendly = Boolean(input.preferences?.backFriendly);
-  const homeBias = recommendation.environment === "home";
-  const focusCardio = recommendation.focus === "cardio";
-  const focusMobility = recommendation.focus === "mobility";
+  const bodyProfile =
+    normalizeBodyProfile(input.bodyProfile) ??
+    deriveBodyProfileFromBodySignals({
+      postureScore: input.postureScore,
+      muscleDefinitionScore: input.muscleDefinitionScore,
+      bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+      healthScore: 70,
+    });
+  const needsMobilityBias = bodyProfile.mobilityNeed !== "low";
+  const needsFatLoss = bodyProfile.primaryGoal === "fat_loss";
+  const kneeFriendly = Boolean(input.preferences?.kneeFriendly) || bodyProfile.impactTolerance === "low";
+  const backFriendly = Boolean(input.preferences?.backFriendly) || bodyProfile.postureFocus === "core_stack";
+  const homeBias = recommendation.environment === "home" || bodyProfile.equipmentBias === "home";
+  const focusCardio = recommendation.focus === "cardio" || bodyProfile.trainingSplitPreference === "conditioning_mix";
+  const focusMobility = recommendation.focus === "mobility" || bodyProfile.mobilityNeed === "high";
   const focusBalanced = recommendation.focus === "balanced";
+  const upperBiasHigh = bodyProfile.upperBodyEmphasis === "high";
+  const lowerBiasHigh = bodyProfile.lowerBodyEmphasis === "high";
   const lowerBase =
     homeBias
       ? [
@@ -526,13 +730,13 @@ export function buildStructuredBodyWorkoutPlan(input: {
     {
       id: "body-day-1",
       dayLabel: "Mon",
-      title: homeBias ? "Home Lower Body" : focusMobility ? "Lower Body Mechanics" : "Lower Body Strength",
+      title: homeBias ? "Home Lower Body" : focusMobility ? "Lower Body Mechanics" : lowerBiasHigh ? "Lower Body Bias" : "Lower Body Strength",
       goal: focusMobility ? "mobility" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
       tags: [
         homeBias ? "home_friendly" : "strength",
-        needsMobilityBias ? "posture" : "progression",
+        needsMobilityBias ? "posture" : bodyProfile.primaryGoal,
         ...(kneeFriendly ? ["knee_friendly"] : []),
         ...(backFriendly ? ["back_friendly"] : []),
       ],
@@ -572,7 +776,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
     {
       id: "body-day-2",
       dayLabel: "Tue",
-      title: homeBias ? "Home Upper Body" : focusCardio ? "Upper + Engine" : "Upper Body Strength",
+      title: homeBias ? "Home Upper Body" : focusCardio ? "Upper + Engine" : upperBiasHigh ? "Upper Body Bias" : "Upper Body Strength",
       goal: focusCardio ? "cardio" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
@@ -592,9 +796,9 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: focusCardio ? "cardio" : "main",
           exercises: homeBias
             ? [
-                { exerciseId: "body_pushup", sets: 4, reps: 12, restSeconds: 45 },
-                { exerciseId: "body_rear_delt_fly", sets: 3, reps: 12, restSeconds: 45 },
-                { exerciseId: "body_db_shoulder_press", sets: 3, reps: 10, restSeconds: 45 },
+                { exerciseId: "body_pushup", sets: 4, reps: upperBiasHigh ? 14 : 12, restSeconds: 45 },
+                { exerciseId: upperBiasHigh ? "body_db_curl_alt" : "body_rear_delt_fly", sets: 3, reps: 12, restSeconds: 45 },
+                { exerciseId: bodyProfile.primaryGoal === "athletic" ? "body_db_shoulder_press" : "body_db_shoulder_press", sets: 3, reps: upperBiasHigh ? 12 : 10, restSeconds: 45 },
               ]
             : focusCardio
               ? [
@@ -622,7 +826,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
     {
       id: "body-day-3",
       dayLabel: "Thu",
-      title: focusCardio ? "Conditioning Focus" : needsFatLoss ? "Conditioning + Mobility" : "Recovery + Mobility",
+      title: focusCardio ? "Conditioning Focus" : needsFatLoss ? "Conditioning + Mobility" : bodyProfile.postureFocus === "core_stack" ? "Core + Mobility" : "Recovery + Mobility",
       goal: focusCardio || needsFatLoss ? "cardio" : "mobility",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment === "gym" ? "both" : recommendation.environment,
@@ -635,7 +839,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
           exercises: [
             {
               exerciseId: homeBias ? "body_zone2_treadmill_walk" : needsFatLoss ? "body_zone2_treadmill_walk" : "body_zone2_stationary_bike",
-              seconds: focusCardio ? 2100 : needsFatLoss ? 1800 : 1500,
+              seconds: focusCardio ? (bodyProfile.conditioningNeed === "high" ? 2100 : 1800) : needsFatLoss ? 1800 : 1500,
             },
             { exerciseId: homeBias ? (kneeFriendly ? "body_zone2_treadmill_walk" : "body_stepup") : "body_interval_rower", seconds: homeBias ? (kneeFriendly ? 600 : undefined) : needsFatLoss ? 720 : 600, sets: homeBias && !kneeFriendly ? 3 : undefined, reps: homeBias && !kneeFriendly ? 12 : undefined },
           ],
@@ -657,7 +861,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
     sessions.push({
       id: "body-day-4",
       dayLabel: "Sat",
-      title: focusBalanced ? "Balanced Full Body" : focusCardio ? "Full Body Conditioning" : homeBias ? "Home Full Body" : "Full Body Builder",
+      title: focusBalanced ? "Balanced Full Body" : focusCardio ? "Full Body Conditioning" : homeBias ? "Home Full Body" : bodyProfile.primaryGoal === "muscle_gain" ? "Full Body Hypertrophy" : bodyProfile.primaryGoal === "athletic" ? "Full Body Performance" : "Full Body Builder",
       goal: focusCardio ? "cardio" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
@@ -840,31 +1044,64 @@ export function buildBodyExercisePlan(input: {
   muscleDefinitionScore: number;
   bodyFatRangeEstimate: string;
   healthScore: number;
+  bodyProfile?: BodyProfile | null;
 }): { oneWeek: string[]; oneMonth: string[] } {
   const postureTier =
     input.postureScore >= 78 ? "strong" : input.postureScore >= 62 ? "moderate" : "needs_correction";
   const definitionTier =
     input.muscleDefinitionScore >= 76 ? "high" : input.muscleDefinitionScore >= 58 ? "moderate" : "low";
-
-  const fatText = input.bodyFatRangeEstimate.toLowerCase();
-  const profile = /22|24|26|28|30|higher/.test(fatText)
-    ? "fat_loss"
-    : /10|12|14|16|lean|athletic/.test(fatText)
-      ? "athletic"
-      : "recomp";
+  const bodyProfile =
+    normalizeBodyProfile(input.bodyProfile) ??
+    deriveBodyProfileFromBodySignals({
+      postureScore: input.postureScore,
+      muscleDefinitionScore: input.muscleDefinitionScore,
+      bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+      healthScore: input.healthScore,
+    });
 
   const strengthLoad =
     definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
 
-  const oneWeek = [
-    `Mon: 1) Body Squat Standard [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
-    "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 3] 4) Body Dead Bug Core [REPS 12 x 3].",
-    "Wed: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Warmup Thoracic Rotation [TIME 8min x 1].",
-    "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].",
-    "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body Barbell Row [REPS 12 x 3] 4) Body Interval Rower [TIME 12min x 1].",
-    "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
-    "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Cable Crossover [REPS 12 x 3] 4) Body Seated Leg Raise [REPS 15 x 3].",
-  ];
+  const oneWeek =
+    bodyProfile.primaryGoal === "fat_loss"
+      ? [
+          `Mon: 1) Body Low Impact Knee Friendly Squat [REPS 12 x 4] 2) Body Glute Bridge [REPS 15 x 3] 3) Body Pushup [REPS 12 x 3] 4) Body Zone2 Treadmill Walk [TIME 20min x 1] (${strengthLoad}).`,
+          "Tue: 1) Body Zone2 Stationary Bike [TIME 35min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
+          "Wed: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Seated Row [REPS 12 x 4] 4) Body Plank Forearm [TIME 35s x 3].",
+          "Thu: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Thoracic Rotation [TIME 8min x 1] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
+          "Fri: 1) Body Pushup [REPS 15 x 4] 2) Body Rear Delt Fly [REPS 12 x 3] 3) Body Stepup [REPS 12 x 3] 4) Body Russian Twist [REPS 16 x 3].",
+          "Sat: 1) Body Interval Rower [TIME 12min x 1] 2) Body Low Impact Back Friendly Hinge [REPS 12 x 3] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
+          "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Cooldown Full Body Mobility [TIME 12min x 1] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Hip Hinge Drill [REPS 10 x 3].",
+        ]
+      : bodyProfile.primaryGoal === "athletic"
+        ? [
+            `Mon: 1) Body Front Squat [REPS 6 x 4] 2) Body Deadlift [REPS 5 x 4] 3) Body Hanging Leg Raise [REPS 10 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1] (${strengthLoad}).`,
+            "Tue: 1) Body Incline DB Press [REPS 8 x 4] 2) Body Pullup Overhand [REPS 8 x 4] 3) Body Seated Cable Row [REPS 10 x 4] 4) Body Interval Rower [TIME 10min x 1].",
+            "Wed: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Warmup Thoracic Rotation [TIME 8min x 1] 4) Body Plank Forearm [TIME 35s x 3].",
+            "Thu: 1) Body Lunge [REPS 10 x 4] 2) Body Hip Thrust [REPS 10 x 4] 3) Body Pushup [REPS 15 x 3] 4) Body Russian Twist [REPS 16 x 3].",
+            "Fri: 1) Body Lat Pulldown [REPS 10 x 4] 2) Body Barbell Row [REPS 10 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 8 x 4] 4) Body Interval Rower [TIME 12min x 1].",
+            "Sat: 1) Body Zone2 Treadmill Walk [TIME 25min x 1] 2) Body Reverse Crunch Bench [REPS 15 x 3] 3) Body Cooldown Full Body Mobility [TIME 10min x 1] 4) Body Hip Hinge Drill [REPS 12 x 3].",
+            "Sun: 1) Body Glute Bridge [REPS 15 x 3] 2) Body Dead Bug Core [REPS 12 x 3] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
+          ]
+        : bodyProfile.primaryGoal === "muscle_gain"
+          ? [
+              `Mon: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 4] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
+              "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 4] 4) Body Rear Delt Fly [REPS 12 x 3].",
+              "Wed: 1) Body Zone2 Treadmill Walk [TIME 20min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
+              "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Hip Thrust [REPS 10 x 4] 4) Body Hanging Leg Raise [REPS 10 x 3].",
+              "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body DB Curl Alt [REPS 12 x 3] 4) Cable Triceps Pushdown [REPS 12 x 3].",
+              "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
+              "Sun: 1) Body Zone2 Stationary Bike [TIME 20min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Seated Leg Raise [REPS 15 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
+            ]
+          : [
+              `Mon: 1) Body Squat Standard [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
+              "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 3] 4) Body Dead Bug Core [REPS 12 x 3].",
+              "Wed: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Warmup Thoracic Rotation [TIME 8min x 1].",
+              "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].",
+              "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body Barbell Row [REPS 12 x 3] 4) Body Interval Rower [TIME 12min x 1].",
+              "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
+              "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Cable Crossover [REPS 12 x 3] 4) Body Seated Leg Raise [REPS 15 x 3].",
+            ];
 
   if (postureTier === "needs_correction") {
     oneWeek[2] =
@@ -873,38 +1110,31 @@ export function buildBodyExercisePlan(input: {
       "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Plank Forearm [TIME 30s x 3] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Hip Hinge Drill [REPS 10 x 3].";
   }
 
-  if (profile === "fat_loss") {
-    oneWeek[5] =
-      "Sat: 1) Body Pushup [REPS 15 x 4] 2) Body Low Impact Knee Friendly Squat [REPS 12 x 3] 3) Body Zone2 Treadmill Walk [TIME 30min x 1] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].";
-  } else if (profile === "athletic") {
-    oneWeek[4] =
-      "Fri: 1) Body Incline DB Press [REPS 8 x 4] 2) Body Pullup Overhand [REPS 8 x 4] 3) Body Seated Cable Row [REPS 10 x 4] 4) Body Interval Rower [TIME 10min x 1].";
+  if (bodyProfile.upperBodyEmphasis === "high") {
+    oneWeek[1] =
+      "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Incline DB Press [REPS 10 x 4] 3) Body Seated Cable Row [REPS 12 x 4] 4) Dumbbell Shoulder Press Overhead [REPS 10 x 3].";
   }
-
-  if (definitionTier === "low") {
-    oneWeek[0] =
-      "Mon: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Static [REPS 10 x 3] 4) Body Zone2 Treadmill Walk [TIME 30min x 1] (light-moderate).";
+  if (bodyProfile.lowerBodyEmphasis === "high") {
+    oneWeek[3] =
+      "Thu: 1) Body Front Squat [REPS 8 x 4] 2) Body Hip Thrust [REPS 10 x 4] 3) Body Reverse Lunge [REPS 10 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].";
   }
 
   const oneMonth = [
-    "Week 1: Technique and consistency. Stay 2-3 reps in reserve and lock form quality.",
-    "Week 2: Progressive overload. Add one set to main lifts and +10% cardio volume.",
-    "Week 3: Body composition push. Keep protein high, preserve strength, tighten recovery.",
+    bodyProfile.trainingSplitPreference === "full_body"
+      ? "Week 1: Full-body foundation. Keep technique clean and repeat exposures without chasing fatigue."
+      : "Week 1: Build consistency. Stay 2-3 reps in reserve and lock form quality.",
+    bodyProfile.primaryGoal === "muscle_gain"
+      ? "Week 2: Hypertrophy push. Add one set to primary lifts and keep reps crisp."
+      : bodyProfile.primaryGoal === "athletic"
+        ? "Week 2: Performance block. Add load to compound lifts and maintain sprint quality."
+        : "Week 2: Progressive overload. Add one set to main lifts and +10% cardio volume.",
+    bodyProfile.primaryGoal === "fat_loss"
+      ? "Week 3: Fat-loss acceleration. Keep deficit mild, add one extra zone-2 block, preserve strength output."
+      : bodyProfile.primaryGoal === "muscle_gain"
+        ? "Week 3: Recovery-aware growth. Keep protein high and protect sleep consistency."
+        : "Week 3: Body composition push. Keep protein high, preserve strength, tighten recovery.",
     "Week 4: Deload and reassess. Cut lifting volume 25%, keep daily movement and mobility.",
   ];
-
-  if (profile === "fat_loss") {
-    oneMonth[2] =
-      "Week 3: Fat-loss acceleration. Keep deficit mild, add one extra zone-2 block, preserve strength output.";
-  }
-  if (profile === "athletic") {
-    oneMonth[1] =
-      "Week 2: Performance block. Add load to compound lifts and maintain sprint quality.";
-  }
-  if (postureTier === "needs_correction") {
-    oneMonth[0] =
-      "Week 1: Posture restoration priority. Daily thoracic + shoulder alignment before all sessions.";
-  }
 
   return { oneWeek, oneMonth };
 }
@@ -1100,23 +1330,32 @@ export function buildBodyAnalysis(input: {
   else if (bodySignal < 65) bodyFatRangeEstimate = "18-24%";
   else bodyFatRangeEstimate = "22-30%";
 
+  const bodyProfile = deriveBodyProfileFromBodySignals({
+    postureScore,
+    muscleDefinitionScore,
+    bodyFatRangeEstimate,
+    healthScore,
+  });
   const recommendation = buildBodyPlanRecommendation({
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
     healthScore,
+    bodyProfile,
   });
   const structuredPlan = buildStructuredBodyWorkoutPlan({
     recommendation,
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
+    bodyProfile,
   });
   const exercisePlan = buildBodyExercisePlan({
     postureScore,
     muscleDefinitionScore,
     bodyFatRangeEstimate,
     healthScore,
+    bodyProfile,
   });
 
   const notes = [
@@ -1129,6 +1368,7 @@ export function buildBodyAnalysis(input: {
     bodyFatRangeEstimate,
     postureScore,
     muscleDefinitionScore,
+    bodyProfile,
     recommendation,
     structuredPlan,
     exercisePlan,
