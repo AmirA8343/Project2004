@@ -312,7 +312,7 @@ async function persistFaceAnalysis(
           analyzedAt: admin.firestore.FieldValue.serverTimestamp(),
           faceAnalyzeV2: {
             faceAnalysisMode: input.faceAnalysisMode ?? null,
-            imageUrl: input.imageUrl ?? null,
+            imageUrl: null,
             visionFeatures: input.visionFeatures ?? null,
             localScores: input.localScores ?? null,
             skinAnalysis: input.skinAnalysis ?? null,
