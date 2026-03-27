@@ -588,7 +588,7 @@ export function buildBodyPlanRecommendation(input: {
     bodyProfile.trainingSplitPreference === "full_body"
       ? 3
       : bodyProfile.trainingReadiness === "advanced"
-        ? 4
+        ? 5
         : 4;
   const sessionMinutes =
     pace === "easy" ? 30 : focus === "mobility" ? 30 : pace === "balanced" ? 38 : 45;
@@ -629,10 +629,15 @@ export function applyBodyPlanPreferences(
   const nextPace = preferences.pace ?? recommendation.pace;
   const nextFocus = preferences.focus ?? recommendation.focus;
   const nextEnvironment = preferences.environment ?? recommendation.environment;
-  const nextDaysPerWeek = nextPace === "easy" ? 3 : 4;
+  const nextDaysPerWeek =
+    nextPace === "easy" ? 3 : recommendation.daysPerWeek >= 5 && nextPace === "fast" ? 5 : 4;
   const nextSessionMinutes = nextPace === "easy" ? 30 : nextPace === "balanced" ? 35 : 45;
   const nextStructureType: BodyPlanRecommendation["structureType"] =
-    nextDaysPerWeek <= 3 ? "full_body" : "upper_lower";
+    recommendation.structureType === "conditioning_mix" && nextDaysPerWeek >= 4
+      ? "conditioning_mix"
+      : nextDaysPerWeek <= 3
+        ? "full_body"
+        : "upper_lower";
 
   return {
     ...recommendation,
@@ -677,6 +682,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
   const focusBalanced = recommendation.focus === "balanced";
   const upperBiasHigh = bodyProfile.upperBodyEmphasis === "high";
   const lowerBiasHigh = bodyProfile.lowerBodyEmphasis === "high";
+  const advancedSplit = recommendation.daysPerWeek >= 5;
   const lowerBase =
     homeBias
       ? [
@@ -912,6 +918,62 @@ export function buildStructuredBodyWorkoutPlan(input: {
     });
   }
 
+  if (recommendation.daysPerWeek >= 5) {
+    sessions.push({
+      id: "body-day-5",
+      dayLabel: "Sun",
+      title:
+        bodyProfile.primaryGoal === "athletic"
+          ? "Skill + Engine"
+          : bodyProfile.primaryGoal === "muscle_gain"
+            ? "Upper Pump"
+            : bodyProfile.primaryGoal === "fat_loss"
+              ? "Conditioning Finish"
+              : "Recovery Builder",
+      goal:
+        bodyProfile.primaryGoal === "athletic" || bodyProfile.primaryGoal === "fat_loss"
+          ? "cardio"
+          : "strength",
+      estimatedMinutes: Math.max(28, recommendation.sessionMinutes - 5),
+      environment: recommendation.environment === "gym" ? "both" : recommendation.environment,
+      tags: [bodyProfile.primaryGoal, advancedSplit ? "advanced_split" : "extra_day"],
+      blocks: [
+        {
+          id: "day5-main",
+          label: bodyProfile.primaryGoal === "fat_loss" ? "Engine + Core" : "Supplemental Work",
+          type:
+            bodyProfile.primaryGoal === "athletic" || bodyProfile.primaryGoal === "fat_loss"
+              ? "cardio"
+              : "accessory",
+          exercises:
+            bodyProfile.primaryGoal === "athletic"
+              ? [
+                  { exerciseId: "body_interval_rower", seconds: 720 },
+                  { exerciseId: "body_pushup", sets: 3, reps: 12, restSeconds: 30 },
+                  { exerciseId: "body_dead_bug_core", sets: 3, reps: 12, restSeconds: 30 },
+                ]
+              : bodyProfile.primaryGoal === "muscle_gain"
+                ? [
+                    { exerciseId: "body_incline_db_press", sets: 3, reps: 12, restSeconds: 45 },
+                    { exerciseId: "body_seated_cable_row", sets: 3, reps: 12, restSeconds: 45 },
+                    { exerciseId: "body_rear_delt_fly", sets: 3, reps: 15, restSeconds: 30 },
+                  ]
+                : bodyProfile.primaryGoal === "fat_loss"
+                  ? [
+                      { exerciseId: "body_zone2_treadmill_walk", seconds: 1500 },
+                      { exerciseId: "body_russian_twist", sets: 3, reps: 16, restSeconds: 30 },
+                      { exerciseId: "body_glute_bridge", sets: 3, reps: 15, restSeconds: 30 },
+                    ]
+                  : [
+                      { exerciseId: "body_zone2_stationary_bike", seconds: 900 },
+                      { exerciseId: "body_plank_forearm", sets: 3, seconds: 35, restSeconds: 30 },
+                      { exerciseId: "body_cooldown_full_body_mobility", seconds: 420 },
+                    ],
+        },
+      ],
+    });
+  }
+
   return {
     summary: {
       daysPerWeek: recommendation.daysPerWeek,
@@ -1061,6 +1123,14 @@ export function buildBodyExercisePlan(input: {
 
   const strengthLoad =
     definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
+  const variantBucket =
+    input.postureScore >= input.muscleDefinitionScore + 8
+      ? "posture"
+      : input.muscleDefinitionScore >= input.postureScore + 8
+        ? "definition"
+        : bodyProfile.conditioningNeed === "high"
+          ? "conditioning"
+          : "balanced";
 
   const oneWeek =
     bodyProfile.primaryGoal === "fat_loss"
@@ -1108,6 +1178,23 @@ export function buildBodyExercisePlan(input: {
       "Wed: 1) Body Zone2 Treadmill Walk [TIME 25min x 1] 2) Body Warmup Thoracic Rotation [TIME 10min x 1] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Dead Bug Core [REPS 12 x 3].";
     oneWeek[6] =
       "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Plank Forearm [TIME 30s x 3] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Hip Hinge Drill [REPS 10 x 3].";
+  }
+
+  if (bodyProfile.primaryGoal === "athletic" && variantBucket === "conditioning") {
+    oneWeek[2] =
+      "Wed: 1) Body Interval Rower [TIME 14min x 1] 2) Body Zone2 Stationary Bike [TIME 18min x 1] 3) Body Warmup Hip Openers [TIME 8min x 1] 4) Body Plank Forearm [TIME 35s x 3].";
+    oneWeek[5] =
+      "Sat: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Reverse Crunch Bench [REPS 15 x 3] 3) Body Cooldown Full Body Mobility [TIME 10min x 1] 4) Body Dead Bug Core [REPS 12 x 3].";
+  } else if (bodyProfile.primaryGoal === "athletic" && variantBucket === "posture") {
+    oneWeek[2] =
+      "Wed: 1) Body Warmup Thoracic Rotation [TIME 10min x 1] 2) Body Warmup Shoulder Activation [REPS 12 x 3] 3) Body Zone2 Stationary Bike [TIME 20min x 1] 4) Body Dead Bug Core [REPS 12 x 3].";
+    oneWeek[6] =
+      "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].";
+  }
+
+  if (bodyProfile.primaryGoal === "recomp" && variantBucket === "conditioning") {
+    oneWeek[5] =
+      "Sat: 1) Body Interval Rower [TIME 12min x 1] 2) Body Pushup [REPS 15 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Zone2 Treadmill Walk [TIME 20min x 1].";
   }
 
   if (bodyProfile.upperBodyEmphasis === "high") {
