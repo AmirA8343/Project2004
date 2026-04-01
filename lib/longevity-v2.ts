@@ -355,6 +355,17 @@ function chooseExerciseId(seed: string, candidates: readonly string[], fallback:
   return chooseVariant(seed, available);
 }
 
+function chooseExerciseIdDistinct(
+  seed: string,
+  candidates: readonly string[],
+  fallback: string,
+  excluded: readonly string[]
+): string {
+  const blocked = new Set(excluded);
+  const filtered = candidates.filter((candidate) => !blocked.has(candidate));
+  return chooseExerciseId(seed, filtered.length ? filtered : candidates, fallback);
+}
+
 export function deriveSkinAnalysisFromFaceScores(input: {
   skinClarityIndex: number;
   faceFatEstimate: FaceFatEstimate;
@@ -807,6 +818,12 @@ export function buildStructuredBodyWorkoutPlan(input: {
     });
   const pick = (slot: string, candidates: readonly string[], fallback: string): string =>
     chooseExerciseId(`${rotationBase}|${slot}`, candidates, fallback);
+  const pickDistinct = (
+    slot: string,
+    candidates: readonly string[],
+    fallback: string,
+    excluded: readonly string[]
+  ): string => chooseExerciseIdDistinct(`${rotationBase}|${slot}`, candidates, fallback, excluded);
   const lowerBase =
     homeBias
       ? [
@@ -888,6 +905,22 @@ export function buildStructuredBodyWorkoutPlan(input: {
             restSeconds: 60,
           },
         ];
+
+  const day3PrimaryEngineExerciseId = homeBias
+    ? pick("day3-engine-home-primary", ["body_zone2_treadmill_walk", "body_stepup"], "body_zone2_treadmill_walk")
+    : needsFatLoss
+      ? pick("day3-engine-fatloss-primary", ["body_zone2_treadmill_walk", "body_interval_rower", "body_zone2_stationary_bike"], "body_zone2_treadmill_walk")
+      : pick("day3-engine-primary", ["body_zone2_stationary_bike", "body_zone2_treadmill_walk", "body_interval_rower"], "body_zone2_stationary_bike");
+  const day3SecondaryEngineExerciseId = homeBias
+    ? (kneeFriendly
+        ? pickDistinct("day3-engine-home-knee", ["body_zone2_treadmill_walk", "body_glute_bridge"], "body_glute_bridge", [day3PrimaryEngineExerciseId])
+        : pickDistinct("day3-engine-home-secondary", ["body_stepup", "body_reverse_lunge", "body_glute_bridge"], "body_stepup", [day3PrimaryEngineExerciseId]))
+    : pickDistinct(
+        "day3-engine-secondary",
+        ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"],
+        "body_interval_rower",
+        [day3PrimaryEngineExerciseId]
+      );
 
   const sessions: StructuredWorkoutSession[] = [
     {
@@ -1074,19 +1107,11 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: "cardio",
           exercises: [
             {
-              exerciseId: homeBias
-                ? pick("day3-engine-home-primary", ["body_zone2_treadmill_walk", "body_stepup"], "body_zone2_treadmill_walk")
-                : needsFatLoss
-                  ? pick("day3-engine-fatloss-primary", ["body_zone2_treadmill_walk", "body_interval_rower", "body_zone2_stationary_bike"], "body_zone2_treadmill_walk")
-                  : pick("day3-engine-primary", ["body_zone2_stationary_bike", "body_zone2_treadmill_walk", "body_interval_rower"], "body_zone2_stationary_bike"),
+              exerciseId: day3PrimaryEngineExerciseId,
               seconds: focusCardio ? (bodyProfile.conditioningNeed === "high" ? 2100 : 1800) : needsFatLoss ? 1800 : 1500,
             },
             {
-              exerciseId: homeBias
-                ? (kneeFriendly
-                    ? pick("day3-engine-home-knee", ["body_zone2_treadmill_walk", "body_glute_bridge"], "body_zone2_treadmill_walk")
-                    : pick("day3-engine-home-secondary", ["body_stepup", "body_reverse_lunge", "body_glute_bridge"], "body_stepup"))
-                : pick("day3-engine-secondary", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"),
+              exerciseId: day3SecondaryEngineExerciseId,
               seconds: homeBias ? (kneeFriendly ? 600 : undefined) : needsFatLoss ? 720 : 600,
               sets: homeBias && !kneeFriendly ? 3 : undefined,
               reps: homeBias && !kneeFriendly ? 12 : undefined,
@@ -1403,9 +1428,24 @@ function summarizeStructuredSessionLine(
   session: StructuredWorkoutSession,
   strengthLoad: string
 ): string {
+  const blockPriority: Record<StructuredWorkoutBlock["type"], number> = {
+    main: 0,
+    cardio: 1,
+    accessory: 2,
+    warmup: 3,
+    cooldown: 4,
+  };
+  const seen = new Set<string>();
   const topExercises = session.blocks
+    .slice()
+    .sort((a, b) => blockPriority[a.type] - blockPriority[b.type])
     .flatMap((block) => block.exercises)
-    .filter((exercise) => isNonEmptyString(exercise.exerciseId))
+    .filter((exercise) => {
+      if (!isNonEmptyString(exercise.exerciseId)) return false;
+      if (seen.has(exercise.exerciseId)) return false;
+      seen.add(exercise.exerciseId);
+      return true;
+    })
     .slice(0, 4)
     .map((exercise, index) => `${index + 1}) ${formatExerciseIdLabel(exercise.exerciseId)} ${formatStructuredExercisePrescription(exercise)}`);
   const suffix = session.goal === "strength" ? ` (${strengthLoad}).` : ".";
