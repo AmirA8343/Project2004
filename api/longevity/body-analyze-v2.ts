@@ -280,6 +280,7 @@ Rules:
     bodyFatRangeEstimate,
     healthScore,
     bodyProfile,
+    rotationSeed: input.rotationSeed,
   });
   const recommendation = buildBodyPlanRecommendation({
     postureScore,

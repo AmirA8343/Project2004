@@ -1380,15 +1380,46 @@ function buildExercisePlan(input: {
   return { oneWeek, oneMonth };
 }
 
+function formatExerciseIdLabel(exerciseId: string): string {
+  return exerciseId
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatStructuredExercisePrescription(exercise: StructuredPlannedExercise): string {
+  if (typeof exercise.seconds === "number" && exercise.seconds > 0) {
+    const minutes = exercise.seconds % 60 === 0 ? `${exercise.seconds / 60}min` : `${exercise.seconds}s`;
+    const sets = typeof exercise.sets === "number" && exercise.sets > 1 ? exercise.sets : 1;
+    return `[TIME ${minutes} x ${sets}]`;
+  }
+  const reps = typeof exercise.reps === "number" && exercise.reps > 0 ? exercise.reps : 10;
+  const sets = typeof exercise.sets === "number" && exercise.sets > 0 ? exercise.sets : 3;
+  return `[REPS ${reps} x ${sets}]`;
+}
+
+function summarizeStructuredSessionLine(
+  session: StructuredWorkoutSession,
+  strengthLoad: string
+): string {
+  const topExercises = session.blocks
+    .flatMap((block) => block.exercises)
+    .filter((exercise) => isNonEmptyString(exercise.exerciseId))
+    .slice(0, 4)
+    .map((exercise, index) => `${index + 1}) ${formatExerciseIdLabel(exercise.exerciseId)} ${formatStructuredExercisePrescription(exercise)}`);
+  const suffix = session.goal === "strength" ? ` (${strengthLoad}).` : ".";
+  return `${session.dayLabel}: ${topExercises.join(" ")}${suffix}`;
+}
+
 export function buildBodyExercisePlan(input: {
   postureScore: number;
   muscleDefinitionScore: number;
   bodyFatRangeEstimate: string;
   healthScore: number;
   bodyProfile?: BodyProfile | null;
+  rotationSeed?: string;
 }): { oneWeek: string[]; oneMonth: string[] } {
-  const postureTier =
-    input.postureScore >= 78 ? "strong" : input.postureScore >= 62 ? "moderate" : "needs_correction";
   const definitionTier =
     input.muscleDefinitionScore >= 76 ? "high" : input.muscleDefinitionScore >= 58 ? "moderate" : "low";
   const bodyProfile =
@@ -1402,88 +1433,22 @@ export function buildBodyExercisePlan(input: {
 
   const strengthLoad =
     definitionTier === "high" ? "heavy" : definitionTier === "moderate" ? "moderate" : "light-moderate";
-  const variantBucket =
-    input.postureScore >= input.muscleDefinitionScore + 8
-      ? "posture"
-      : input.muscleDefinitionScore >= input.postureScore + 8
-        ? "definition"
-        : bodyProfile.conditioningNeed === "high"
-          ? "conditioning"
-          : "balanced";
-
-  const oneWeek =
-    bodyProfile.primaryGoal === "fat_loss"
-      ? [
-          `Mon: 1) Body Low Impact Knee Friendly Squat [REPS 12 x 4] 2) Body Glute Bridge [REPS 15 x 3] 3) Body Pushup [REPS 12 x 3] 4) Body Zone2 Treadmill Walk [TIME 20min x 1] (${strengthLoad}).`,
-          "Tue: 1) Body Zone2 Stationary Bike [TIME 35min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
-          "Wed: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Seated Row [REPS 12 x 4] 4) Body Plank Forearm [TIME 35s x 3].",
-          "Thu: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Thoracic Rotation [TIME 8min x 1] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
-          "Fri: 1) Body Pushup [REPS 15 x 4] 2) Body Rear Delt Fly [REPS 12 x 3] 3) Body Stepup [REPS 12 x 3] 4) Body Russian Twist [REPS 16 x 3].",
-          "Sat: 1) Body Interval Rower [TIME 12min x 1] 2) Body Low Impact Back Friendly Hinge [REPS 12 x 3] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
-          "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Cooldown Full Body Mobility [TIME 12min x 1] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Hip Hinge Drill [REPS 10 x 3].",
-        ]
-      : bodyProfile.primaryGoal === "athletic"
-        ? [
-            `Mon: 1) Body Front Squat [REPS 6 x 4] 2) Body Deadlift [REPS 5 x 4] 3) Body Hanging Leg Raise [REPS 10 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1] (${strengthLoad}).`,
-            "Tue: 1) Body Incline DB Press [REPS 8 x 4] 2) Body Pullup Overhand [REPS 8 x 4] 3) Body Seated Cable Row [REPS 10 x 4] 4) Body Interval Rower [TIME 10min x 1].",
-            "Wed: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Warmup Thoracic Rotation [TIME 8min x 1] 4) Body Plank Forearm [TIME 35s x 3].",
-            "Thu: 1) Body Lunge [REPS 10 x 4] 2) Body Hip Thrust [REPS 10 x 4] 3) Body Pushup [REPS 15 x 3] 4) Body Russian Twist [REPS 16 x 3].",
-            "Fri: 1) Body Lat Pulldown [REPS 10 x 4] 2) Body Barbell Row [REPS 10 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 8 x 4] 4) Body Interval Rower [TIME 12min x 1].",
-            "Sat: 1) Body Zone2 Treadmill Walk [TIME 25min x 1] 2) Body Reverse Crunch Bench [REPS 15 x 3] 3) Body Cooldown Full Body Mobility [TIME 10min x 1] 4) Body Hip Hinge Drill [REPS 12 x 3].",
-            "Sun: 1) Body Glute Bridge [REPS 15 x 3] 2) Body Dead Bug Core [REPS 12 x 3] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
-          ]
-        : bodyProfile.primaryGoal === "muscle_gain"
-          ? [
-              `Mon: 1) Dumbbell Goblet Squat [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 4] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
-              "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 4] 4) Body Rear Delt Fly [REPS 12 x 3].",
-              "Wed: 1) Body Zone2 Treadmill Walk [TIME 20min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Dead Bug Core [REPS 12 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
-              "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Hip Thrust [REPS 10 x 4] 4) Body Hanging Leg Raise [REPS 10 x 3].",
-              "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body DB Curl Alt [REPS 12 x 3] 4) Cable Triceps Pushdown [REPS 12 x 3].",
-              "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
-              "Sun: 1) Body Zone2 Stationary Bike [TIME 20min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Seated Leg Raise [REPS 15 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].",
-            ]
-          : [
-              `Mon: 1) Body Squat Standard [REPS 10 x 4] 2) Dumbbell RDL [REPS 10 x 3] 3) Body Split Squat Bulgarian [REPS 10 x 3] 4) Body Plank Forearm [TIME 35s x 3] (${strengthLoad}).`,
-              "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Seated Cable Row [REPS 12 x 4] 3) Dumbbell Shoulder Press Overhead [REPS 10 x 3] 4) Body Dead Bug Core [REPS 12 x 3].",
-              "Wed: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Warmup Hip Openers [TIME 8min x 1] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Warmup Thoracic Rotation [TIME 8min x 1].",
-              "Thu: 1) Body Deadlift [REPS 6 x 4] 2) Leg Extension Machine [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].",
-              "Fri: 1) Body Incline DB Press [REPS 10 x 4] 2) Body Lat Pulldown [REPS 10 x 4] 3) Body Barbell Row [REPS 12 x 3] 4) Body Interval Rower [TIME 12min x 1].",
-              "Sat: 1) Body Pushup [REPS 15 x 3] 2) Body Lunge [REPS 12 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Cooldown Full Body Mobility [TIME 10min x 1].",
-              "Sun: 1) Body Zone2 Stationary Bike [TIME 25min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Cable Crossover [REPS 12 x 3] 4) Body Seated Leg Raise [REPS 15 x 3].",
-            ];
-
-  if (postureTier === "needs_correction") {
-    oneWeek[2] =
-      "Wed: 1) Body Zone2 Treadmill Walk [TIME 25min x 1] 2) Body Warmup Thoracic Rotation [TIME 10min x 1] 3) Body Warmup Shoulder Activation [REPS 12 x 3] 4) Body Dead Bug Core [REPS 12 x 3].";
-    oneWeek[6] =
-      "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Plank Forearm [TIME 30s x 3] 3) Body Cooldown Breathing Reset [TIME 5min x 1] 4) Body Hip Hinge Drill [REPS 10 x 3].";
-  }
-
-  if (bodyProfile.primaryGoal === "athletic" && variantBucket === "conditioning") {
-    oneWeek[2] =
-      "Wed: 1) Body Interval Rower [TIME 14min x 1] 2) Body Zone2 Stationary Bike [TIME 18min x 1] 3) Body Warmup Hip Openers [TIME 8min x 1] 4) Body Plank Forearm [TIME 35s x 3].";
-    oneWeek[5] =
-      "Sat: 1) Body Zone2 Treadmill Walk [TIME 30min x 1] 2) Body Reverse Crunch Bench [REPS 15 x 3] 3) Body Cooldown Full Body Mobility [TIME 10min x 1] 4) Body Dead Bug Core [REPS 12 x 3].";
-  } else if (bodyProfile.primaryGoal === "athletic" && variantBucket === "posture") {
-    oneWeek[2] =
-      "Wed: 1) Body Warmup Thoracic Rotation [TIME 10min x 1] 2) Body Warmup Shoulder Activation [REPS 12 x 3] 3) Body Zone2 Stationary Bike [TIME 20min x 1] 4) Body Dead Bug Core [REPS 12 x 3].";
-    oneWeek[6] =
-      "Sun: 1) Body Cooldown Full Body Mobility [TIME 12min x 1] 2) Body Hip Hinge Drill [REPS 12 x 3] 3) Body Glute Bridge [REPS 15 x 3] 4) Body Cooldown Breathing Reset [TIME 5min x 1].";
-  }
-
-  if (bodyProfile.primaryGoal === "recomp" && variantBucket === "conditioning") {
-    oneWeek[5] =
-      "Sat: 1) Body Interval Rower [TIME 12min x 1] 2) Body Pushup [REPS 15 x 3] 3) Body Russian Twist [REPS 16 x 3] 4) Body Zone2 Treadmill Walk [TIME 20min x 1].";
-  }
-
-  if (bodyProfile.upperBodyEmphasis === "high") {
-    oneWeek[1] =
-      "Tue: 1) Dumbbell Bench Press Flat [REPS 10 x 4] 2) Body Incline DB Press [REPS 10 x 4] 3) Body Seated Cable Row [REPS 12 x 4] 4) Dumbbell Shoulder Press Overhead [REPS 10 x 3].";
-  }
-  if (bodyProfile.lowerBodyEmphasis === "high") {
-    oneWeek[3] =
-      "Thu: 1) Body Front Squat [REPS 8 x 4] 2) Body Hip Thrust [REPS 10 x 4] 3) Body Reverse Lunge [REPS 10 x 3] 4) Body Reverse Crunch Bench [REPS 15 x 3].";
-  }
+  const recommendation = buildBodyPlanRecommendation({
+    postureScore: input.postureScore,
+    muscleDefinitionScore: input.muscleDefinitionScore,
+    bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+    healthScore: input.healthScore,
+    bodyProfile,
+  });
+  const structuredPlan = buildStructuredBodyWorkoutPlan({
+    recommendation,
+    postureScore: input.postureScore,
+    muscleDefinitionScore: input.muscleDefinitionScore,
+    bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+    bodyProfile,
+    rotationSeed: input.rotationSeed,
+  });
+  const oneWeek = structuredPlan.sessions.map((session) => summarizeStructuredSessionLine(session, strengthLoad));
 
   const oneMonth = [
     bodyProfile.trainingSplitPreference === "full_body"
@@ -1722,6 +1687,7 @@ export function buildBodyAnalysis(input: {
     bodyFatRangeEstimate,
     healthScore,
     bodyProfile,
+    rotationSeed: input.imageUrl.trim(),
   });
 
   const notes = [
