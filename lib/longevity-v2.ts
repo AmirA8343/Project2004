@@ -342,6 +342,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function chooseVariant<T>(seed: string, variants: readonly T[]): T {
+  if (!variants.length) {
+    throw new Error("chooseVariant requires at least one variant");
+  }
+  return variants[hash32(seed) % variants.length] as T;
+}
+
+function chooseExerciseId(seed: string, candidates: readonly string[], fallback: string): string {
+  const available = candidates.filter((candidate) => AVAILABLE_BODY_EXERCISE_IDS.includes(candidate as any));
+  if (!available.length) return fallback;
+  return chooseVariant(seed, available);
+}
+
 export function deriveSkinAnalysisFromFaceScores(input: {
   skinClarityIndex: number;
   faceFatEstimate: FaceFatEstimate;
@@ -760,6 +773,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
   bodyFatRangeEstimate: string;
   bodyProfile?: BodyProfile | null;
   preferences?: BodyPlanPreferences | null;
+  rotationSeed?: string;
 }): StructuredBodyWorkoutPlan {
   const recommendation = input.recommendation;
   const bodyProfile =
@@ -781,53 +795,98 @@ export function buildStructuredBodyWorkoutPlan(input: {
   const upperBiasHigh = bodyProfile.upperBodyEmphasis === "high";
   const lowerBiasHigh = bodyProfile.lowerBodyEmphasis === "high";
   const advancedSplit = recommendation.daysPerWeek >= 5;
+  const rotationBase =
+    input.rotationSeed ||
+    stableStringify({
+      recommendation,
+      postureScore: input.postureScore,
+      muscleDefinitionScore: input.muscleDefinitionScore,
+      bodyFatRangeEstimate: input.bodyFatRangeEstimate,
+      bodyProfile,
+      preferences: input.preferences ?? null,
+    });
+  const pick = (slot: string, candidates: readonly string[], fallback: string): string =>
+    chooseExerciseId(`${rotationBase}|${slot}`, candidates, fallback);
   const lowerBase =
     homeBias
       ? [
           {
-            exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "dumbbell_goblet_squat",
+            exerciseId: kneeFriendly
+              ? pick("day1-home-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+              : pick("day1-home-squat", ["dumbbell_goblet_squat", "body_squat_standard", "body_front_squat"], "dumbbell_goblet_squat"),
             sets: 4,
             reps: 10,
             restSeconds: 60,
           },
           {
-            exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "dumbbell_rdl",
+            exerciseId: backFriendly
+              ? pick("day1-home-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+              : pick("day1-home-hinge", ["dumbbell_rdl", "body_hip_hinge_drill", "body_form_cue_deadlift"], "dumbbell_rdl"),
             sets: 3,
             reps: 10,
             restSeconds: 60,
           },
-          { exerciseId: kneeFriendly ? "body_glute_bridge" : "body_reverse_lunge", sets: 3, reps: 10, restSeconds: 45 },
+          {
+            exerciseId: kneeFriendly
+              ? pick("day1-home-unilateral-knee", ["body_glute_bridge", "body_stepup", "dumbbell_squat_hold_isometric"], "body_glute_bridge")
+              : pick("day1-home-unilateral", ["body_reverse_lunge", "body_stepup", "body_split_squat_static"], "body_reverse_lunge"),
+            sets: 3,
+            reps: 10,
+            restSeconds: 45,
+          },
         ]
       : input.muscleDefinitionScore < 58
       ? [
           {
-            exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "dumbbell_goblet_squat",
+            exerciseId: kneeFriendly
+              ? pick("day1-gym-squat-knee-lowdef", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+              : pick("day1-gym-squat-lowdef", ["dumbbell_goblet_squat", "body_squat_standard", "body_front_squat"], "dumbbell_goblet_squat"),
             sets: 4,
             reps: 10,
             restSeconds: 75,
           },
           {
-            exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "dumbbell_rdl",
+            exerciseId: backFriendly
+              ? pick("day1-gym-hinge-back-lowdef", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+              : pick("day1-gym-hinge-lowdef", ["dumbbell_rdl", "body_hip_hinge_drill", "body_form_cue_deadlift"], "dumbbell_rdl"),
             sets: 3,
             reps: 10,
             restSeconds: 75,
           },
-          { exerciseId: kneeFriendly ? "body_glute_bridge" : "body_split_squat_static", sets: 3, reps: 10, restSeconds: 60 },
+          {
+            exerciseId: kneeFriendly
+              ? pick("day1-gym-unilateral-knee-lowdef", ["body_glute_bridge", "body_stepup", "dumbbell_squat_hold_isometric"], "body_glute_bridge")
+              : pick("day1-gym-unilateral-lowdef", ["body_split_squat_static", "body_reverse_lunge", "body_stepup"], "body_split_squat_static"),
+            sets: 3,
+            reps: 10,
+            restSeconds: 60,
+          },
         ]
       : [
           {
-            exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "body_squat_standard",
+            exerciseId: kneeFriendly
+              ? pick("day1-gym-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+              : pick("day1-gym-squat", ["body_squat_standard", "body_front_squat", "dumbbell_goblet_squat"], "body_squat_standard"),
             sets: 4,
             reps: 10,
             restSeconds: 75,
           },
           {
-            exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "dumbbell_rdl",
+            exerciseId: backFriendly
+              ? pick("day1-gym-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+              : pick("day1-gym-hinge", ["dumbbell_rdl", "body_deadlift", "body_form_cue_deadlift"], "dumbbell_rdl"),
             sets: 3,
             reps: 10,
             restSeconds: 75,
           },
-          { exerciseId: kneeFriendly ? "body_stepup" : "body_split_squat_bulgarian", sets: 3, reps: 10, restSeconds: 60 },
+          {
+            exerciseId: kneeFriendly
+              ? pick("day1-gym-unilateral-knee", ["body_stepup", "body_glute_bridge", "dumbbell_squat_hold_isometric"], "body_stepup")
+              : pick("day1-gym-unilateral", ["body_split_squat_bulgarian", "body_reverse_lunge", "body_lunge"], "body_split_squat_bulgarian"),
+            sets: 3,
+            reps: 10,
+            restSeconds: 60,
+          },
         ];
 
   const sessions: StructuredWorkoutSession[] = [
@@ -861,8 +920,20 @@ export function buildStructuredBodyWorkoutPlan(input: {
           exercises: focusMobility
             ? [
                 { exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "body_hip_hinge_drill", sets: 3, reps: 12, restSeconds: 45 },
-                { exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "body_form_cue_squat", sets: 3, reps: 10, restSeconds: 45 },
-                { exerciseId: "body_glute_bridge", sets: 3, reps: 15, restSeconds: 45 },
+                {
+                  exerciseId: kneeFriendly
+                    ? pick("day1-mobility-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup"], "body_low_impact_knee_friendly_squat")
+                    : pick("day1-mobility-squat", ["body_form_cue_squat", "body_squat_standard", "dumbbell_goblet_squat"], "body_form_cue_squat"),
+                  sets: 3,
+                  reps: 10,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: pick("day1-mobility-glute", ["body_glute_bridge", "body_hip_thrust", "dumbbell_squat_hold_isometric"], "body_glute_bridge"),
+                  sets: 3,
+                  reps: 15,
+                  restSeconds: 45,
+                },
               ]
             : lowerBase,
         },
@@ -900,20 +971,65 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: focusCardio ? "cardio" : "main",
           exercises: homeBias
             ? [
-                { exerciseId: "body_pushup", sets: 4, reps: upperBiasHigh ? 14 : 12, restSeconds: 45 },
-                { exerciseId: upperBiasHigh ? "body_db_curl_alt" : "body_rear_delt_fly", sets: 3, reps: 12, restSeconds: 45 },
-                { exerciseId: bodyProfile.primaryGoal === "athletic" ? "body_db_shoulder_press" : "body_db_shoulder_press", sets: 3, reps: upperBiasHigh ? 12 : 10, restSeconds: 45 },
+                {
+                  exerciseId: pick("day2-home-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
+                  sets: 4,
+                  reps: upperBiasHigh ? 14 : 12,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: upperBiasHigh
+                    ? pick("day2-home-accessory-upper", ["body_db_curl_alt", "body_db_curl", "dumbbell_front_raise_alternating"], "body_db_curl_alt")
+                    : pick("day2-home-accessory-balanced", ["body_rear_delt_fly", "body_db_curl_alt", "dumbbell_front_raise_alternating"], "body_rear_delt_fly"),
+                  sets: 3,
+                  reps: 12,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: pick("day2-home-press", ["body_db_shoulder_press", "dumbbell_shoulder_press_overhead", "body_form_cue_press"], "body_db_shoulder_press"),
+                  sets: 3,
+                  reps: upperBiasHigh ? 12 : 10,
+                  restSeconds: 45,
+                },
               ]
             : focusCardio
               ? [
-                  { exerciseId: "body_pushup", sets: 4, reps: 12, restSeconds: 30 },
-                  { exerciseId: "body_interval_rower", seconds: 600 },
-                  { exerciseId: "body_dead_bug_core", sets: 3, reps: 12, restSeconds: 30 },
+                  {
+                    exerciseId: pick("day2-cardio-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
+                    sets: 4,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
+                  {
+                    exerciseId: pick("day2-cardio-engine", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"),
+                    seconds: 600,
+                  },
+                  {
+                    exerciseId: pick("day2-cardio-core", ["body_dead_bug_core", "body_plank_forearm", "body_russian_twist"], "body_dead_bug_core"),
+                    sets: 3,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
                 ]
               : [
-                  { exerciseId: "dumbbell_bench_press_flat", sets: 4, reps: 10, restSeconds: 75 },
-                  { exerciseId: "body_seated_cable_row", sets: 4, reps: 12, restSeconds: 75 },
-                  { exerciseId: "dumbbell_shoulder_press_overhead", sets: 3, reps: 10, restSeconds: 60 },
+                  {
+                    exerciseId: pick("day2-gym-push", ["dumbbell_bench_press_flat", "body_incline_db_press", "parallel_bar_dips"], "dumbbell_bench_press_flat"),
+                    sets: 4,
+                    reps: 10,
+                    restSeconds: 75,
+                  },
+                  {
+                    exerciseId: pick("day2-gym-pull", ["body_seated_cable_row", "body_lat_pulldown", "chest_supported_barbell_row", "body_barbell_row"], "body_seated_cable_row"),
+                    sets: 4,
+                    reps: 12,
+                    restSeconds: 75,
+                  },
+                  {
+                    exerciseId: pick("day2-gym-press", ["dumbbell_shoulder_press_overhead", "machine_shoulder_press", "body_db_shoulder_press"], "dumbbell_shoulder_press_overhead"),
+                    sets: 3,
+                    reps: 10,
+                    restSeconds: 60,
+                  },
                 ],
         },
         {
@@ -921,8 +1037,24 @@ export function buildStructuredBodyWorkoutPlan(input: {
           label: "Accessory",
           type: "accessory",
           exercises: [
-            { exerciseId: backFriendly ? "body_cooldown_breathing_reset" : "body_dead_bug_core", sets: backFriendly ? undefined : 3, reps: backFriendly ? undefined : 12, seconds: backFriendly ? 180 : undefined, restSeconds: 45 },
-            { exerciseId: homeBias ? "body_plank_forearm" : "body_rear_delt_fly", sets: 3, reps: homeBias ? undefined : 12, seconds: homeBias ? 35 : undefined, restSeconds: 45 },
+            {
+              exerciseId: backFriendly
+                ? pick("day2-accessory-backfriendly", ["body_cooldown_breathing_reset", "body_cooldown_full_body_mobility"], "body_cooldown_breathing_reset")
+                : pick("day2-accessory-core", ["body_dead_bug_core", "body_plank_forearm", "body_russian_twist"], "body_dead_bug_core"),
+              sets: backFriendly ? undefined : 3,
+              reps: backFriendly ? undefined : 12,
+              seconds: backFriendly ? 180 : undefined,
+              restSeconds: 45,
+            },
+            {
+              exerciseId: homeBias
+                ? pick("day2-accessory-home", ["body_plank_forearm", "side_plank_forearm", "body_dead_bug_core"], "body_plank_forearm")
+                : pick("day2-accessory-gym", ["body_rear_delt_fly", "body_db_curl_alt", "cable_triceps_pushdown"], "body_rear_delt_fly"),
+              sets: 3,
+              reps: homeBias ? undefined : 12,
+              seconds: homeBias ? 35 : undefined,
+              restSeconds: 45,
+            },
           ],
         },
       ],
@@ -942,10 +1074,23 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: "cardio",
           exercises: [
             {
-              exerciseId: homeBias ? "body_zone2_treadmill_walk" : needsFatLoss ? "body_zone2_treadmill_walk" : "body_zone2_stationary_bike",
+              exerciseId: homeBias
+                ? pick("day3-engine-home-primary", ["body_zone2_treadmill_walk", "body_stepup"], "body_zone2_treadmill_walk")
+                : needsFatLoss
+                  ? pick("day3-engine-fatloss-primary", ["body_zone2_treadmill_walk", "body_interval_rower", "body_zone2_stationary_bike"], "body_zone2_treadmill_walk")
+                  : pick("day3-engine-primary", ["body_zone2_stationary_bike", "body_zone2_treadmill_walk", "body_interval_rower"], "body_zone2_stationary_bike"),
               seconds: focusCardio ? (bodyProfile.conditioningNeed === "high" ? 2100 : 1800) : needsFatLoss ? 1800 : 1500,
             },
-            { exerciseId: homeBias ? (kneeFriendly ? "body_zone2_treadmill_walk" : "body_stepup") : "body_interval_rower", seconds: homeBias ? (kneeFriendly ? 600 : undefined) : needsFatLoss ? 720 : 600, sets: homeBias && !kneeFriendly ? 3 : undefined, reps: homeBias && !kneeFriendly ? 12 : undefined },
+            {
+              exerciseId: homeBias
+                ? (kneeFriendly
+                    ? pick("day3-engine-home-knee", ["body_zone2_treadmill_walk", "body_glute_bridge"], "body_zone2_treadmill_walk")
+                    : pick("day3-engine-home-secondary", ["body_stepup", "body_reverse_lunge", "body_glute_bridge"], "body_stepup"))
+                : pick("day3-engine-secondary", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"),
+              seconds: homeBias ? (kneeFriendly ? 600 : undefined) : needsFatLoss ? 720 : 600,
+              sets: homeBias && !kneeFriendly ? 3 : undefined,
+              reps: homeBias && !kneeFriendly ? 12 : undefined,
+            },
           ],
         },
         {
@@ -977,21 +1122,57 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: focusCardio ? "cardio" : "main",
           exercises: homeBias
             ? [
-                  { exerciseId: "body_pushup", sets: 3, reps: 15, restSeconds: 30 },
-                  { exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "dumbbell_goblet_squat", sets: 3, reps: 12, restSeconds: 30 },
-                  { exerciseId: kneeFriendly ? "body_glute_bridge" : "body_reverse_lunge", sets: 3, reps: 10, restSeconds: 30 },
+                  { exerciseId: pick("day4-home-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"), sets: 3, reps: 15, restSeconds: 30 },
+                  {
+                    exerciseId: kneeFriendly
+                      ? pick("day4-home-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+                      : pick("day4-home-squat", ["dumbbell_goblet_squat", "body_squat_standard", "body_front_squat"], "dumbbell_goblet_squat"),
+                    sets: 3,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
+                  {
+                    exerciseId: kneeFriendly
+                      ? pick("day4-home-lower-knee", ["body_glute_bridge", "dumbbell_squat_hold_isometric", "body_stepup"], "body_glute_bridge")
+                      : pick("day4-home-lower", ["body_reverse_lunge", "body_lunge", "body_stepup"], "body_reverse_lunge"),
+                    sets: 3,
+                    reps: 10,
+                    restSeconds: 30,
+                  },
                 ]
-            : focusCardio
+              : focusCardio
               ? [
-                  { exerciseId: "body_interval_rower", seconds: 720 },
-                  { exerciseId: "body_pushup", sets: 3, reps: 12, restSeconds: 30 },
-                  { exerciseId: kneeFriendly ? "body_low_impact_knee_friendly_squat" : "body_lunge", sets: 3, reps: 12, restSeconds: 30 },
+                  { exerciseId: pick("day4-cardio-engine", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"), seconds: 720 },
+                  { exerciseId: pick("day4-cardio-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"), sets: 3, reps: 12, restSeconds: 30 },
+                  {
+                    exerciseId: kneeFriendly
+                      ? pick("day4-cardio-lower-knee", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+                      : pick("day4-cardio-lower", ["body_lunge", "body_reverse_lunge", "body_stepup"], "body_lunge"),
+                    sets: 3,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
                 ]
               : [
-                  { exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "body_deadlift", sets: 4, reps: 6, restSeconds: 90 },
-                  { exerciseId: "body_incline_db_press", sets: 4, reps: 10, restSeconds: 75 },
                   {
-                    exerciseId: kneeFriendly || needsFatLoss ? "body_low_impact_knee_friendly_squat" : "body_lunge",
+                    exerciseId: backFriendly
+                      ? pick("day4-strength-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+                      : pick("day4-strength-hinge", ["body_deadlift", "dumbbell_rdl", "body_form_cue_deadlift"], "body_deadlift"),
+                    sets: 4,
+                    reps: 6,
+                    restSeconds: 90,
+                  },
+                  {
+                    exerciseId: pick("day4-strength-push", ["body_incline_db_press", "dumbbell_bench_press_flat", "machine_shoulder_press"], "body_incline_db_press"),
+                    sets: 4,
+                    reps: 10,
+                    restSeconds: 75,
+                  },
+                  {
+                    exerciseId:
+                      kneeFriendly || needsFatLoss
+                        ? pick("day4-strength-lower-knee", ["body_low_impact_knee_friendly_squat", "body_stepup", "body_glute_bridge"], "body_low_impact_knee_friendly_squat")
+                        : pick("day4-strength-lower", ["body_lunge", "body_reverse_lunge", "body_split_squat_static"], "body_lunge"),
                     sets: 3,
                     reps: 12,
                     restSeconds: 60,
@@ -1004,11 +1185,11 @@ export function buildStructuredBodyWorkoutPlan(input: {
           type: needsFatLoss ? "cardio" : "accessory",
           exercises: needsFatLoss
             ? [
-                { exerciseId: "body_zone2_treadmill_walk", seconds: 1200 },
-                { exerciseId: "body_russian_twist", sets: 3, reps: 16, restSeconds: 45 },
+                { exerciseId: pick("day4-finish-cardio", ["body_zone2_treadmill_walk", "body_zone2_stationary_bike", "body_interval_rower"], "body_zone2_treadmill_walk"), seconds: 1200 },
+                { exerciseId: pick("day4-finish-core", ["body_russian_twist", "body_dead_bug_core", "body_plank_forearm"], "body_russian_twist"), sets: 3, reps: 16, restSeconds: 45 },
               ]
             : [
-                { exerciseId: "body_hanging_leg_raise", sets: 3, reps: 10, restSeconds: 45 },
+                { exerciseId: pick("day4-finish-accessory", ["body_hanging_leg_raise", "body_seated_leg_raise", "body_ab_rollout"], "body_hanging_leg_raise"), sets: 3, reps: 10, restSeconds: 45 },
                 { exerciseId: "body_cooldown_full_body_mobility", seconds: 480 },
               ],
         },
@@ -1046,25 +1227,25 @@ export function buildStructuredBodyWorkoutPlan(input: {
           exercises:
             bodyProfile.primaryGoal === "athletic"
               ? [
-                  { exerciseId: "body_interval_rower", seconds: 720 },
-                  { exerciseId: "body_pushup", sets: 3, reps: 12, restSeconds: 30 },
-                  { exerciseId: "body_dead_bug_core", sets: 3, reps: 12, restSeconds: 30 },
+                  { exerciseId: pick("day5-athletic-engine", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"), seconds: 720 },
+                  { exerciseId: pick("day5-athletic-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"), sets: 3, reps: 12, restSeconds: 30 },
+                  { exerciseId: pick("day5-athletic-core", ["body_dead_bug_core", "body_plank_forearm", "body_ab_rollout"], "body_dead_bug_core"), sets: 3, reps: 12, restSeconds: 30 },
                 ]
               : bodyProfile.primaryGoal === "muscle_gain"
                 ? [
-                    { exerciseId: "body_incline_db_press", sets: 3, reps: 12, restSeconds: 45 },
-                    { exerciseId: "body_seated_cable_row", sets: 3, reps: 12, restSeconds: 45 },
-                    { exerciseId: "body_rear_delt_fly", sets: 3, reps: 15, restSeconds: 30 },
+                    { exerciseId: pick("day5-muscle-push", ["body_incline_db_press", "dumbbell_bench_press_flat", "machine_shoulder_press"], "body_incline_db_press"), sets: 3, reps: 12, restSeconds: 45 },
+                    { exerciseId: pick("day5-muscle-pull", ["body_seated_cable_row", "body_lat_pulldown", "chest_supported_barbell_row"], "body_seated_cable_row"), sets: 3, reps: 12, restSeconds: 45 },
+                    { exerciseId: pick("day5-muscle-accessory", ["body_rear_delt_fly", "body_db_curl_alt", "cable_triceps_pushdown"], "body_rear_delt_fly"), sets: 3, reps: 15, restSeconds: 30 },
                   ]
                 : bodyProfile.primaryGoal === "fat_loss"
                   ? [
-                      { exerciseId: "body_zone2_treadmill_walk", seconds: 1500 },
-                      { exerciseId: "body_russian_twist", sets: 3, reps: 16, restSeconds: 30 },
-                      { exerciseId: "body_glute_bridge", sets: 3, reps: 15, restSeconds: 30 },
+                      { exerciseId: pick("day5-fatloss-cardio", ["body_zone2_treadmill_walk", "body_zone2_stationary_bike", "body_interval_rower"], "body_zone2_treadmill_walk"), seconds: 1500 },
+                      { exerciseId: pick("day5-fatloss-core", ["body_russian_twist", "body_dead_bug_core", "body_plank_forearm"], "body_russian_twist"), sets: 3, reps: 16, restSeconds: 30 },
+                      { exerciseId: pick("day5-fatloss-lower", ["body_glute_bridge", "body_stepup", "body_reverse_lunge"], "body_glute_bridge"), sets: 3, reps: 15, restSeconds: 30 },
                     ]
                   : [
-                      { exerciseId: "body_zone2_stationary_bike", seconds: 900 },
-                      { exerciseId: "body_plank_forearm", sets: 3, seconds: 35, restSeconds: 30 },
+                      { exerciseId: pick("day5-recovery-cardio", ["body_zone2_stationary_bike", "body_zone2_treadmill_walk", "body_interval_rower"], "body_zone2_stationary_bike"), seconds: 900 },
+                      { exerciseId: pick("day5-recovery-core", ["body_plank_forearm", "side_plank_forearm", "body_dead_bug_core"], "body_plank_forearm"), sets: 3, seconds: 35, restSeconds: 30 },
                       { exerciseId: "body_cooldown_full_body_mobility", seconds: 420 },
                     ],
         },

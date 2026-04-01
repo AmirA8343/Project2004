@@ -166,6 +166,7 @@ async function runVisionBodyAnalysis(input: {
   today: JsonObject;
   history: JsonObject[];
   healthRecord: JsonObject | null;
+  rotationSeed?: string;
 }): Promise<BodyAnalyzeResponse | null> {
   if (!OPENAI_API_KEY) return null;
 
@@ -293,6 +294,7 @@ Rules:
     muscleDefinitionScore,
     bodyFatRangeEstimate,
     bodyProfile,
+    rotationSeed: input.rotationSeed,
   });
 
   const e = isPlainObject((parsed as any).exercisePlan) ? (parsed as any).exercisePlan : {};
@@ -354,6 +356,7 @@ export default async function handler(
       today: parsed.today,
       history: parsed.history,
       healthRecord,
+      rotationSeed: parsed.imageUrl,
     });
 
     const result =
