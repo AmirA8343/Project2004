@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import admin from "firebase-admin";
 import { requireAuth } from "../../lib/auth";
+import { getUserAgeGateProfile } from "../../lib/ageGate";
 import { getFirebaseFirestore } from "../../lib/firebaseAdmin";
 import {
   AVAILABLE_FACE_EXERCISE_IDS,
@@ -667,6 +668,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const parsed = parseFaceAnalyzeRequest(req.body);
   if (!parsed) {
     res.status(400).json({ error: "Invalid request body" });
+    return;
+  }
+
+  const ageGate = await getUserAgeGateProfile(auth.uid);
+  if (ageGate.shouldBlockImageAnalysis) {
+    res.status(403).json({
+      error: "youth_mode_required",
+      message: ageGate.isAgeKnown
+        ? "Face photo analysis is disabled for under-18 accounts. Use the questionnaire-based youth plan instead."
+        : "Face photo analysis is disabled until age is confirmed. Complete onboarding or use the questionnaire-based youth plan instead.",
+      youthModeRequired: true,
+      ageVerificationRequired: !ageGate.isAgeKnown,
+    });
     return;
   }
 
