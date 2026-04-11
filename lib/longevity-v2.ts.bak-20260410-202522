@@ -446,14 +446,6 @@ function getBodyExercisePriorityScore(priority: ExercisePriority): number {
   return 0;
 }
 
-function getExercisePriority(exerciseId: string): ExercisePriority {
-  return getBodyExerciseMeta(exerciseId).priority;
-}
-
-function getExerciseRole(exerciseId: string): ExerciseRole {
-  return getBodyExerciseMeta(exerciseId).role;
-}
-
 function rankExerciseCandidates(
   seed: string,
   candidates: readonly string[],
@@ -497,101 +489,6 @@ function rankExerciseCandidates(
     });
 
   return scored[0]?.candidate ?? fallback;
-}
-
-const LOW_PRIORITY_UPGRADE_CANDIDATES: Record<string, readonly string[]> = {
-  body_hip_hinge_drill: ["dumbbell_rdl", "body_deadlift", "body_hip_thrust", "body_glute_bridge"],
-  body_form_cue_deadlift: ["body_deadlift", "dumbbell_rdl", "body_hip_thrust"],
-  body_low_impact_back_friendly_hinge: ["body_glute_bridge", "body_hip_thrust", "dumbbell_rdl"],
-  body_low_impact_knee_friendly_squat: ["body_stepup", "body_glute_bridge", "dumbbell_goblet_squat"],
-  body_form_cue_squat: ["dumbbell_goblet_squat", "body_front_squat", "body_squat_standard"],
-  body_form_cue_press: ["body_db_shoulder_press", "dumbbell_shoulder_press_overhead", "body_pushup"],
-  dumbbell_squat_hold_isometric: ["body_stepup", "body_glute_bridge", "body_split_squat_static"],
-};
-
-const MEDIUM_PRIORITY_PROMOTION_CANDIDATES: Record<string, readonly string[]> = {
-  body_squat_standard: ["dumbbell_goblet_squat", "body_front_squat"],
-  body_lunge: ["body_split_squat_bulgarian", "body_reverse_lunge", "body_stepup"],
-  body_glute_bridge: ["body_hip_thrust", "body_stepup", "body_reverse_lunge"],
-  body_pushup: ["body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
-  body_standard_pushup: ["body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
-  body_kneeling_pushup: ["body_pushup", "body_incline_db_press", "dumbbell_bench_press_flat"],
-  body_seated_row: ["body_seated_cable_row", "body_lat_pulldown", "body_barbell_row"],
-  body_rear_delt_fly: ["body_seated_cable_row", "body_lat_pulldown", "body_barbell_row"],
-  body_russian_twist: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
-  body_dead_bug_core: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
-  body_plank_forearm: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
-};
-
-function pickExerciseUpgrade(
-  exerciseId: string,
-  environment: BodyPlanEnvironment,
-  seed: string,
-  candidatesByExercise: Record<string, readonly string[]>
-): string {
-  const candidates = candidatesByExercise[exerciseId];
-  if (!candidates?.length) return exerciseId;
-  return rankExerciseCandidates(seed, candidates, exerciseId, {
-    environment,
-    preferredRoles: ["main", "accessory", "cardio"],
-    discourageLowPriority: true,
-  });
-}
-
-function enforceSessionExercisePriorityRules(
-  session: StructuredWorkoutSession,
-  environment: BodyPlanEnvironment,
-  seed: string
-): StructuredWorkoutSession {
-  const blocks = session.blocks.map((block) => ({
-    ...block,
-    exercises: block.exercises.map((exercise) => ({ ...exercise })),
-  }));
-
-  const actionableEntries = blocks.flatMap((block) =>
-    (block.type === "warmup" || block.type === "cooldown"
-      ? []
-      : block.exercises.map((exercise) => ({ block, exercise })))
-  );
-
-  let lowPriorityNonRecoveryCount = 0;
-  actionableEntries.forEach(({ exercise }, index) => {
-    if (!isNonEmptyString(exercise.exerciseId)) return;
-    if (getExercisePriority(exercise.exerciseId) !== "low") return;
-    if (getExerciseRole(exercise.exerciseId) === "recovery") return;
-    lowPriorityNonRecoveryCount += 1;
-    if (lowPriorityNonRecoveryCount <= 1) return;
-    exercise.exerciseId = pickExerciseUpgrade(
-      exercise.exerciseId,
-      environment,
-      `${seed}|low-upgrade|${index}`,
-      LOW_PRIORITY_UPGRADE_CANDIDATES
-    );
-  });
-
-  const leadingActionable = actionableEntries.slice(0, 3);
-  let leadingHighCount = leadingActionable.filter(({ exercise }) => isNonEmptyString(exercise.exerciseId) && getExercisePriority(exercise.exerciseId) === "high").length;
-  if (leadingHighCount < 2) {
-    leadingActionable.forEach(({ exercise }, index) => {
-      if (!isNonEmptyString(exercise.exerciseId) || leadingHighCount >= 2) return;
-      if (getExercisePriority(exercise.exerciseId) === "high") return;
-      const promoted = pickExerciseUpgrade(
-        exercise.exerciseId,
-        environment,
-        `${seed}|promote|${index}`,
-        MEDIUM_PRIORITY_PROMOTION_CANDIDATES
-      );
-      if (promoted !== exercise.exerciseId && getExercisePriority(promoted) === "high") {
-        exercise.exerciseId = promoted;
-        leadingHighCount += 1;
-      }
-    });
-  }
-
-  return {
-    ...session,
-    blocks,
-  };
 }
 
 function chooseExerciseId(seed: string, candidates: readonly string[], fallback: string): string {
@@ -1613,14 +1510,6 @@ export function buildStructuredBodyWorkoutPlan(input: {
     });
   }
 
-  const optimizedSessions = sessions.map((session, index) =>
-    enforceSessionExercisePriorityRules(
-      session,
-      session.environment,
-      `${rotationBase}|session-priority|${index}|${session.id}`
-    )
-  );
-
   return {
     summary: {
       daysPerWeek: recommendation.daysPerWeek,
@@ -1631,7 +1520,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
       kneeFriendly,
       backFriendly,
     },
-    sessions: optimizedSessions,
+    sessions,
   };
 }
 
