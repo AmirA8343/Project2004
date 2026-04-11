@@ -1621,24 +1621,6 @@ export function buildStructuredBodyWorkoutPlan(input: {
     )
   );
 
-  console.log("[Body Planner v2.1] priority rules active", {
-    environment: recommendation.environment,
-    focus: recommendation.focus,
-    daysPerWeek: recommendation.daysPerWeek,
-    primaryGoal: bodyProfile.primaryGoal,
-    trainingReadiness: bodyProfile.trainingReadiness,
-    sessionPreview: optimizedSessions.map((session) => ({
-      dayLabel: session.dayLabel,
-      goal: session.goal,
-      topExercises: session.blocks
-        .filter((block) => block.type !== "warmup" && block.type !== "cooldown")
-        .flatMap((block) => block.exercises)
-        .map((exercise) => exercise.exerciseId)
-        .filter((exerciseId): exerciseId is string => isNonEmptyString(exerciseId))
-        .slice(0, 3),
-    })),
-  });
-
   return {
     summary: {
       daysPerWeek: recommendation.daysPerWeek,
