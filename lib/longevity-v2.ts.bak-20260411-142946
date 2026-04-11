@@ -99,7 +99,6 @@ export const AVAILABLE_BODY_EXERCISE_IDS = [
   "body_standard_pushup",
   "body_cable_chest_fly",
   "body_cable_crossover",
-  "body_chest_press_machine",
   "parallel_bar_dips",
   "dumbbell_front_raise_alternating",
   "cable_triceps_pushdown",
@@ -107,11 +106,9 @@ export const AVAILABLE_BODY_EXERCISE_IDS = [
   "body_seated_row",
   "chest_supported_barbell_row",
   "body_lat_pulldown",
-  "body_lat_pulldown_neutral_grip",
   "body_pullup",
   "body_pullup_overhand",
   "assisted_pullup_band",
-  "body_machine_row",
   "body_rear_delt_fly",
   "body_db_curl",
   "body_db_curl_alt",
@@ -139,8 +136,6 @@ export const AVAILABLE_BODY_EXERCISE_IDS = [
   "dumbbell_rdl",
   "body_hip_hinge_drill",
   "leg_extension_machine",
-  "body_leg_press",
-  "body_hamstring_curl_seated",
   "body_calf_raise_standing",
   "body_warmup_hip_openers",
   "body_low_impact_knee_friendly_squat",
@@ -314,7 +309,6 @@ const BODY_EXERCISE_META: Partial<Record<(typeof AVAILABLE_BODY_EXERCISE_IDS)[nu
   body_standard_pushup: { priority: "medium", role: "accessory", equipment: "home" },
   body_cable_chest_fly: { priority: "medium", role: "accessory", equipment: "gym" },
   body_cable_crossover: { priority: "medium", role: "accessory", equipment: "gym" },
-  body_chest_press_machine: { priority: "high", role: "main", equipment: "gym" },
   parallel_bar_dips: { priority: "high", role: "main", equipment: "gym" },
   dumbbell_front_raise_alternating: { priority: "medium", role: "accessory", equipment: "both" },
   cable_triceps_pushdown: { priority: "medium", role: "accessory", equipment: "gym" },
@@ -322,11 +316,9 @@ const BODY_EXERCISE_META: Partial<Record<(typeof AVAILABLE_BODY_EXERCISE_IDS)[nu
   body_seated_row: { priority: "medium", role: "accessory", equipment: "gym" },
   chest_supported_barbell_row: { priority: "high", role: "main", equipment: "gym" },
   body_lat_pulldown: { priority: "high", role: "main", equipment: "gym" },
-  body_lat_pulldown_neutral_grip: { priority: "high", role: "main", equipment: "gym" },
   body_pullup: { priority: "high", role: "main", equipment: "gym" },
   body_pullup_overhand: { priority: "high", role: "main", equipment: "gym" },
   assisted_pullup_band: { priority: "medium", role: "accessory", equipment: "both" },
-  body_machine_row: { priority: "high", role: "main", equipment: "gym" },
   body_rear_delt_fly: { priority: "medium", role: "accessory", equipment: "both" },
   body_db_curl: { priority: "medium", role: "accessory", equipment: "both" },
   body_db_curl_alt: { priority: "medium", role: "accessory", equipment: "both" },
@@ -354,8 +346,6 @@ const BODY_EXERCISE_META: Partial<Record<(typeof AVAILABLE_BODY_EXERCISE_IDS)[nu
   dumbbell_rdl: { priority: "high", role: "main", equipment: "gym" },
   body_hip_hinge_drill: { priority: "low", role: "prep", equipment: "both" },
   leg_extension_machine: { priority: "medium", role: "accessory", equipment: "gym" },
-  body_leg_press: { priority: "high", role: "main", equipment: "gym" },
-  body_hamstring_curl_seated: { priority: "medium", role: "accessory", equipment: "gym" },
   body_calf_raise_standing: { priority: "medium", role: "accessory", equipment: "both" },
   body_warmup_hip_openers: { priority: "low", role: "prep", equipment: "both" },
   body_low_impact_knee_friendly_squat: { priority: "low", role: "prep", equipment: "both" },
@@ -520,14 +510,14 @@ const LOW_PRIORITY_UPGRADE_CANDIDATES: Record<string, readonly string[]> = {
 };
 
 const MEDIUM_PRIORITY_PROMOTION_CANDIDATES: Record<string, readonly string[]> = {
-  body_squat_standard: ["body_leg_press", "dumbbell_goblet_squat", "body_front_squat"],
+  body_squat_standard: ["dumbbell_goblet_squat", "body_front_squat"],
   body_lunge: ["body_split_squat_bulgarian", "body_reverse_lunge", "body_stepup"],
-  body_glute_bridge: ["body_hip_thrust", "body_hamstring_curl_seated", "body_stepup", "body_reverse_lunge"],
-  body_pushup: ["body_chest_press_machine", "body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
-  body_standard_pushup: ["body_chest_press_machine", "body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
-  body_kneeling_pushup: ["body_pushup", "body_chest_press_machine", "body_incline_db_press", "dumbbell_bench_press_flat"],
-  body_seated_row: ["body_machine_row", "body_seated_cable_row", "body_lat_pulldown_neutral_grip", "body_lat_pulldown", "body_barbell_row"],
-  body_rear_delt_fly: ["body_machine_row", "body_seated_cable_row", "body_lat_pulldown_neutral_grip", "body_lat_pulldown", "body_barbell_row"],
+  body_glute_bridge: ["body_hip_thrust", "body_stepup", "body_reverse_lunge"],
+  body_pushup: ["body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
+  body_standard_pushup: ["body_incline_db_press", "dumbbell_bench_press_flat", "parallel_bar_dips"],
+  body_kneeling_pushup: ["body_pushup", "body_incline_db_press", "dumbbell_bench_press_flat"],
+  body_seated_row: ["body_seated_cable_row", "body_lat_pulldown", "body_barbell_row"],
+  body_rear_delt_fly: ["body_seated_cable_row", "body_lat_pulldown", "body_barbell_row"],
   body_russian_twist: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
   body_dead_bug_core: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
   body_plank_forearm: ["body_ab_rollout", "body_hanging_leg_raise", "body_reverse_crunch_bench"],
@@ -1227,306 +1217,12 @@ export function buildStructuredBodyWorkoutPlan(input: {
       allowLowPriority: true,
     }
   );
-  const starterThreeDayTemplate =
-    !homeBias &&
-    recommendation.daysPerWeek === 3 &&
-    bodyProfile.trainingReadiness === "starter" &&
-    bodyProfile.trainingSplitPreference === "full_body"
-      ? chooseVariant(`${rotationBase}|starter-three-day-template|${bodyProfile.primaryGoal}`, [
-          "lower_upper_engine",
-          "fullbody_foundation",
-          "push_pull_engine",
-        ] as const)
-      : "lower_upper_engine";
-  const usesFullBodyFoundationTemplate = starterThreeDayTemplate === "fullbody_foundation";
-  const usesPushPullEngineTemplate = starterThreeDayTemplate === "push_pull_engine";
-  const usesTemplateRotation = usesFullBodyFoundationTemplate || usesPushPullEngineTemplate;
-
-  const day1MainExercises =
-    focusMobility
-      ? [
-          { exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "body_hip_hinge_drill", sets: 3, reps: 12, restSeconds: 45 },
-          {
-            exerciseId: kneeFriendly
-              ? pick("day1-mobility-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup"], "body_low_impact_knee_friendly_squat")
-              : pick("day1-mobility-squat", ["body_form_cue_squat", "body_squat_standard", "dumbbell_goblet_squat"], "body_form_cue_squat"),
-            sets: 3,
-            reps: 10,
-            restSeconds: 45,
-          },
-          {
-            exerciseId: pick("day1-mobility-glute", ["body_glute_bridge", "body_hip_thrust", "dumbbell_squat_hold_isometric"], "body_glute_bridge"),
-            sets: 3,
-            reps: 15,
-            restSeconds: 45,
-          },
-        ]
-      : usesFullBodyFoundationTemplate
-        ? [
-            {
-              exerciseId: kneeFriendly
-                ? pickRanked("day1-template-foundation-lower-knee", ["body_leg_press", "body_stepup", "body_glute_bridge"], "body_leg_press", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  })
-                : pickRanked("day1-template-foundation-lower", ["body_leg_press", "body_front_squat", "dumbbell_goblet_squat"], "body_leg_press", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-              sets: 4,
-              reps: 10,
-              restSeconds: 75,
-            },
-            {
-              exerciseId: pickRanked("day1-template-foundation-push", ["body_chest_press_machine", "dumbbell_bench_press_flat", "body_incline_db_press"], "body_chest_press_machine", {
-                preferredRoles: ["main"],
-                discourageLowPriority: true,
-              }),
-              sets: 4,
-              reps: 10,
-              restSeconds: 75,
-            },
-            {
-              exerciseId: pickRanked("day1-template-foundation-pull", ["body_machine_row", "body_seated_cable_row", "body_lat_pulldown_neutral_grip"], "body_machine_row", {
-                preferredRoles: ["main"],
-                discourageLowPriority: true,
-              }),
-              sets: 3,
-              reps: 12,
-              restSeconds: 60,
-            },
-          ]
-        : usesPushPullEngineTemplate
-          ? [
-              {
-                exerciseId: kneeFriendly
-                  ? pickRanked("day1-template-pushpull-squat-knee", ["body_leg_press", "body_stepup", "body_glute_bridge"], "body_leg_press", {
-                      preferredRoles: ["main"],
-                      discourageLowPriority: true,
-                    })
-                  : pickRanked("day1-template-pushpull-squat", ["body_front_squat", "body_leg_press", "dumbbell_goblet_squat"], "body_front_squat", {
-                      preferredRoles: ["main"],
-                      discourageLowPriority: true,
-                    }),
-                sets: 4,
-                reps: 10,
-                restSeconds: 75,
-              },
-              {
-                exerciseId: pickRanked("day1-template-pushpull-push", ["body_chest_press_machine", "body_incline_db_press", "dumbbell_bench_press_flat"], "body_chest_press_machine", {
-                  preferredRoles: ["main"],
-                  discourageLowPriority: true,
-                }),
-                sets: 4,
-                reps: 10,
-                restSeconds: 75,
-              },
-              {
-                exerciseId: pickRanked("day1-template-pushpull-pulldown", ["body_lat_pulldown_neutral_grip", "body_lat_pulldown", "body_seated_cable_row"], "body_lat_pulldown_neutral_grip", {
-                  preferredRoles: ["main"],
-                  discourageLowPriority: true,
-                }),
-                sets: 3,
-                reps: 12,
-                restSeconds: 60,
-              },
-            ]
-          : lowerBase;
-
-  const day2MainExercises =
-    homeBias
-      ? [
-          {
-            exerciseId: pick("day2-home-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
-            sets: 4,
-            reps: upperBiasHigh ? 14 : 12,
-            restSeconds: 45,
-          },
-          {
-            exerciseId: upperBiasHigh
-              ? pick("day2-home-accessory-upper", ["body_db_curl_alt", "body_db_curl", "dumbbell_front_raise_alternating"], "body_db_curl_alt")
-              : pick("day2-home-accessory-balanced", ["body_rear_delt_fly", "body_db_curl_alt", "dumbbell_front_raise_alternating"], "body_rear_delt_fly"),
-            sets: 3,
-            reps: 12,
-            restSeconds: 45,
-          },
-          {
-            exerciseId: pickRanked("day2-home-press", ["body_db_shoulder_press", "dumbbell_shoulder_press_overhead", "body_pushup", "body_form_cue_press"], "body_db_shoulder_press", {
-              preferredRoles: ["main"],
-              discourageLowPriority: true,
-            }),
-            sets: 3,
-            reps: upperBiasHigh ? 12 : 10,
-            restSeconds: 45,
-          },
-        ]
-      : focusCardio
-        ? [
-            {
-              exerciseId: pick("day2-cardio-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
-              sets: 4,
-              reps: 12,
-              restSeconds: 30,
-            },
-            {
-              exerciseId: pick("day2-cardio-engine", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"),
-              seconds: 600,
-            },
-            {
-              exerciseId: pick("day2-cardio-core", ["body_dead_bug_core", "body_plank_forearm", "body_russian_twist"], "body_dead_bug_core"),
-              sets: 3,
-              reps: 12,
-              restSeconds: 30,
-            },
-          ]
-        : usesFullBodyFoundationTemplate
-          ? [
-              {
-                exerciseId: backFriendly
-                  ? pickRanked("day2-template-foundation-hinge-back", ["body_hip_thrust", "body_glute_bridge", "body_hamstring_curl_seated"], "body_hip_thrust", {
-                      preferredRoles: ["main", "accessory"],
-                      discourageLowPriority: true,
-                    })
-                  : pickRanked("day2-template-foundation-hinge", ["body_deadlift", "dumbbell_rdl", "body_hip_thrust"], "body_deadlift", {
-                      preferredRoles: ["main"],
-                      discourageLowPriority: true,
-                    }),
-                sets: 4,
-                reps: 8,
-                restSeconds: 75,
-              },
-              {
-                exerciseId: kneeFriendly
-                  ? pickRanked("day2-template-foundation-support-knee", ["body_hamstring_curl_seated", "body_stepup", "body_glute_bridge"], "body_hamstring_curl_seated", {
-                      preferredRoles: ["accessory", "main"],
-                      discourageLowPriority: true,
-                    })
-                  : pickRanked("day2-template-foundation-support", ["body_hamstring_curl_seated", "body_split_squat_bulgarian", "body_stepup"], "body_hamstring_curl_seated", {
-                      preferredRoles: ["accessory", "main"],
-                      discourageLowPriority: true,
-                    }),
-                sets: 3,
-                reps: 12,
-                restSeconds: 60,
-              },
-              {
-                exerciseId: pickRanked("day2-template-foundation-upperpull", ["body_lat_pulldown_neutral_grip", "body_lat_pulldown", "body_machine_row"], "body_lat_pulldown_neutral_grip", {
-                  preferredRoles: ["main"],
-                  discourageLowPriority: true,
-                }),
-                sets: 3,
-                reps: 12,
-                restSeconds: 60,
-              },
-            ]
-          : usesPushPullEngineTemplate
-            ? [
-                {
-                  exerciseId: backFriendly
-                    ? pickRanked("day2-template-pushpull-hinge-back", ["body_hip_thrust", "body_glute_bridge", "body_hamstring_curl_seated"], "body_hip_thrust", {
-                        preferredRoles: ["main", "accessory"],
-                        discourageLowPriority: true,
-                      })
-                    : pickRanked("day2-template-pushpull-hinge", ["body_deadlift", "dumbbell_rdl", "body_hip_thrust"], "body_deadlift", {
-                        preferredRoles: ["main"],
-                        discourageLowPriority: true,
-                      }),
-                  sets: 4,
-                  reps: 8,
-                  restSeconds: 75,
-                },
-                {
-                  exerciseId: pickRanked("day2-template-pushpull-row", ["body_machine_row", "body_seated_cable_row", "chest_supported_barbell_row"], "body_machine_row", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-                  sets: 4,
-                  reps: 12,
-                  restSeconds: 75,
-                },
-                {
-                  exerciseId: pickRanked("day2-template-pushpull-press", ["machine_shoulder_press", "body_db_shoulder_press", "dumbbell_shoulder_press_overhead"], "machine_shoulder_press", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-                  sets: 3,
-                  reps: 10,
-                  restSeconds: 60,
-                },
-              ]
-            : [
-                {
-                  exerciseId: pickRanked("day2-gym-push", ["dumbbell_bench_press_flat", "body_incline_db_press", "parallel_bar_dips", "body_chest_press_machine"], "dumbbell_bench_press_flat", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-                  sets: 4,
-                  reps: 10,
-                  restSeconds: 75,
-                },
-                {
-                  exerciseId: pickRanked("day2-gym-pull", ["body_seated_cable_row", "body_machine_row", "body_lat_pulldown_neutral_grip", "body_lat_pulldown", "chest_supported_barbell_row", "body_barbell_row"], "body_seated_cable_row", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-                  sets: 4,
-                  reps: 12,
-                  restSeconds: 75,
-                },
-                {
-                  exerciseId: pickRanked("day2-gym-press", ["machine_shoulder_press", "dumbbell_shoulder_press_overhead", "body_db_shoulder_press"], "machine_shoulder_press", {
-                    preferredRoles: ["main"],
-                    discourageLowPriority: true,
-                  }),
-                  sets: 3,
-                  reps: 10,
-                  restSeconds: 60,
-                },
-              ];
-
-  const day1Title =
-    homeBias
-      ? "Home Lower Body"
-      : focusMobility
-        ? "Lower Body Mechanics"
-        : usesFullBodyFoundationTemplate
-          ? "Full Body Foundation A"
-          : usesPushPullEngineTemplate
-            ? "Squat + Push Builder"
-            : lowerBiasHigh
-              ? "Lower Body Bias"
-              : "Lower Body Strength";
-  const day2Title =
-    homeBias
-      ? "Home Upper Body"
-      : focusCardio
-        ? "Upper + Engine"
-        : usesFullBodyFoundationTemplate
-          ? "Full Body Foundation B"
-          : usesPushPullEngineTemplate
-            ? "Pull + Hinge Builder"
-            : upperBiasHigh
-              ? "Upper Body Bias"
-              : "Upper Body Strength";
-  const day3Title =
-    usesTemplateRotation
-      ? bodyProfile.primaryGoal === "athletic"
-        ? "Engine + Recovery"
-        : "Conditioning + Recovery"
-      : focusCardio
-        ? "Conditioning Focus"
-        : needsFatLoss
-          ? "Conditioning + Mobility"
-          : bodyProfile.postureFocus === "core_stack"
-            ? "Core + Mobility"
-            : "Recovery + Mobility";
-  const day3Goal = usesTemplateRotation ? "cardio" : focusCardio || needsFatLoss ? "cardio" : "mobility";
 
   const sessions: StructuredWorkoutSession[] = [
     {
       id: "body-day-1",
       dayLabel: "Mon",
-      title: day1Title,
+      title: homeBias ? "Home Lower Body" : focusMobility ? "Lower Body Mechanics" : lowerBiasHigh ? "Lower Body Bias" : "Lower Body Strength",
       goal: focusMobility ? "mobility" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
@@ -1550,7 +1246,25 @@ export function buildStructuredBodyWorkoutPlan(input: {
           id: "day1-main",
           label: focusMobility ? "Movement Quality" : "Main Strength",
           type: focusMobility ? "accessory" : "main",
-          exercises: day1MainExercises,
+          exercises: focusMobility
+            ? [
+                { exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "body_hip_hinge_drill", sets: 3, reps: 12, restSeconds: 45 },
+                {
+                  exerciseId: kneeFriendly
+                    ? pick("day1-mobility-squat-knee", ["body_low_impact_knee_friendly_squat", "body_stepup"], "body_low_impact_knee_friendly_squat")
+                    : pick("day1-mobility-squat", ["body_form_cue_squat", "body_squat_standard", "dumbbell_goblet_squat"], "body_form_cue_squat"),
+                  sets: 3,
+                  reps: 10,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: pick("day1-mobility-glute", ["body_glute_bridge", "body_hip_thrust", "dumbbell_squat_hold_isometric"], "body_glute_bridge"),
+                  sets: 3,
+                  reps: 15,
+                  restSeconds: 45,
+                },
+              ]
+            : lowerBase,
         },
         {
           id: "day1-cooldown",
@@ -1566,7 +1280,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
     {
       id: "body-day-2",
       dayLabel: "Tue",
-      title: day2Title,
+      title: homeBias ? "Home Upper Body" : focusCardio ? "Upper + Engine" : upperBiasHigh ? "Upper Body Bias" : "Upper Body Strength",
       goal: focusCardio ? "cardio" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
@@ -1584,7 +1298,80 @@ export function buildStructuredBodyWorkoutPlan(input: {
           id: "day2-main",
           label: focusCardio ? "Mixed Circuit" : "Main Strength",
           type: focusCardio ? "cardio" : "main",
-          exercises: day2MainExercises,
+          exercises: homeBias
+            ? [
+                {
+                  exerciseId: pick("day2-home-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
+                  sets: 4,
+                  reps: upperBiasHigh ? 14 : 12,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: upperBiasHigh
+                    ? pick("day2-home-accessory-upper", ["body_db_curl_alt", "body_db_curl", "dumbbell_front_raise_alternating"], "body_db_curl_alt")
+                    : pick("day2-home-accessory-balanced", ["body_rear_delt_fly", "body_db_curl_alt", "dumbbell_front_raise_alternating"], "body_rear_delt_fly"),
+                  sets: 3,
+                  reps: 12,
+                  restSeconds: 45,
+                },
+                {
+                  exerciseId: pickRanked("day2-home-press", ["body_db_shoulder_press", "dumbbell_shoulder_press_overhead", "body_pushup", "body_form_cue_press"], "body_db_shoulder_press", {
+                    preferredRoles: ["main"],
+                    discourageLowPriority: true,
+                  }),
+                  sets: 3,
+                  reps: upperBiasHigh ? 12 : 10,
+                  restSeconds: 45,
+                },
+              ]
+            : focusCardio
+              ? [
+                  {
+                    exerciseId: pick("day2-cardio-push", ["body_pushup", "body_standard_pushup", "body_kneeling_pushup"], "body_pushup"),
+                    sets: 4,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
+                  {
+                    exerciseId: pick("day2-cardio-engine", ["body_interval_rower", "body_zone2_stationary_bike", "body_zone2_treadmill_walk"], "body_interval_rower"),
+                    seconds: 600,
+                  },
+                  {
+                    exerciseId: pick("day2-cardio-core", ["body_dead_bug_core", "body_plank_forearm", "body_russian_twist"], "body_dead_bug_core"),
+                    sets: 3,
+                    reps: 12,
+                    restSeconds: 30,
+                  },
+                ]
+              : [
+                  {
+                    exerciseId: pickRanked("day2-gym-push", ["dumbbell_bench_press_flat", "body_incline_db_press", "parallel_bar_dips"], "dumbbell_bench_press_flat", {
+                      preferredRoles: ["main"],
+                      discourageLowPriority: true,
+                    }),
+                    sets: 4,
+                    reps: 10,
+                    restSeconds: 75,
+                  },
+                  {
+                    exerciseId: pickRanked("day2-gym-pull", ["body_seated_cable_row", "body_lat_pulldown", "chest_supported_barbell_row", "body_barbell_row"], "body_seated_cable_row", {
+                      preferredRoles: ["main"],
+                      discourageLowPriority: true,
+                    }),
+                    sets: 4,
+                    reps: 12,
+                    restSeconds: 75,
+                  },
+                  {
+                    exerciseId: pickRanked("day2-gym-press", ["machine_shoulder_press", "dumbbell_shoulder_press_overhead", "body_db_shoulder_press"], "machine_shoulder_press", {
+                      preferredRoles: ["main"],
+                      discourageLowPriority: true,
+                    }),
+                    sets: 3,
+                    reps: 10,
+                    restSeconds: 60,
+                  },
+                ],
         },
         {
           id: "day2-accessory",
@@ -1616,8 +1403,8 @@ export function buildStructuredBodyWorkoutPlan(input: {
     {
       id: "body-day-3",
       dayLabel: "Thu",
-      title: day3Title,
-      goal: day3Goal,
+      title: focusCardio ? "Conditioning Focus" : needsFatLoss ? "Conditioning + Mobility" : bodyProfile.postureFocus === "core_stack" ? "Core + Mobility" : "Recovery + Mobility",
+      goal: focusCardio || needsFatLoss ? "cardio" : "mobility",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment === "gym" ? "both" : recommendation.environment,
       tags: [needsFatLoss ? "fat_loss" : "recovery", needsMobilityBias ? "posture" : "mobility"],
@@ -2002,38 +1789,24 @@ function summarizeStructuredSessionLine(
   session: StructuredWorkoutSession,
   strengthLoad: string
 ): string {
+  const blockPriority: Record<StructuredWorkoutBlock["type"], number> = {
+    main: 0,
+    cardio: 1,
+    accessory: 2,
+    warmup: 3,
+    cooldown: 4,
+  };
   const seen = new Set<string>();
-  const orderedBlocks = session.blocks
+  const topExercises = session.blocks
     .slice()
-    .sort((a, b) => {
-      const blockPriority: Record<StructuredWorkoutBlock["type"], number> = {
-        main: 0,
-        cardio: 1,
-        accessory: 2,
-        warmup: 3,
-        cooldown: 4,
-      };
-      return blockPriority[a.type] - blockPriority[b.type];
-    });
-  const primaryExercises = orderedBlocks
-    .filter((block) => block.type !== "warmup" && block.type !== "cooldown")
+    .sort((a, b) => blockPriority[a.type] - blockPriority[b.type])
     .flatMap((block) => block.exercises)
     .filter((exercise) => {
       if (!isNonEmptyString(exercise.exerciseId)) return false;
       if (seen.has(exercise.exerciseId)) return false;
       seen.add(exercise.exerciseId);
       return true;
-    });
-  const fallbackExercises = orderedBlocks
-    .filter((block) => block.type === "warmup" || block.type === "cooldown")
-    .flatMap((block) => block.exercises)
-    .filter((exercise) => {
-      if (!isNonEmptyString(exercise.exerciseId)) return false;
-      if (seen.has(exercise.exerciseId)) return false;
-      seen.add(exercise.exerciseId);
-      return true;
-    });
-  const topExercises = [...primaryExercises, ...fallbackExercises]
+    })
     .slice(0, 4)
     .map((exercise, index) => `${index + 1}) ${formatExerciseIdLabel(exercise.exerciseId)} ${formatStructuredExercisePrescription(exercise)}`);
   const suffix = session.goal === "strength" ? ` (${strengthLoad}).` : ".";
