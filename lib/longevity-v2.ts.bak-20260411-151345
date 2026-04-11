@@ -272,19 +272,6 @@ export type StructuredBodyWorkoutPlan = {
     backFriendly?: boolean;
   };
   sessions: StructuredWorkoutSession[];
-  month?: {
-    durationWeeks: 4;
-    currentWeek: 1 | 2 | 3 | 4;
-    goal: BodyProfile["primaryGoal"];
-    trainingReadiness: BodyProfile["trainingReadiness"];
-    progressionStyle: "reps" | "sets" | "density" | "mixed";
-    weeks: Array<{
-      week: 1 | 2 | 3 | 4;
-      theme: string;
-      coachNote: string;
-      sessions: StructuredWorkoutSession[];
-    }>;
-  };
 };
 
 export type StructuredQuickWorkout = {
@@ -1864,11 +1851,6 @@ export function buildStructuredBodyWorkoutPlan(input: {
       `${rotationBase}|session-priority|${index}|${session.id}`
     )
   );
-  const month = buildMonthStructuredSessions(
-    optimizedSessions,
-    bodyProfile.primaryGoal,
-    bodyProfile.trainingReadiness
-  );
 
   console.log("[Body Planner v2.1] priority rules active", {
     environment: recommendation.environment,
@@ -1876,17 +1858,16 @@ export function buildStructuredBodyWorkoutPlan(input: {
     daysPerWeek: recommendation.daysPerWeek,
     primaryGoal: bodyProfile.primaryGoal,
     trainingReadiness: bodyProfile.trainingReadiness,
-      sessionPreview: optimizedSessions.map((session) => ({
-        dayLabel: session.dayLabel,
-        goal: session.goal,
+    sessionPreview: optimizedSessions.map((session) => ({
+      dayLabel: session.dayLabel,
+      goal: session.goal,
       topExercises: session.blocks
         .filter((block) => block.type !== "warmup" && block.type !== "cooldown")
         .flatMap((block) => block.exercises)
         .map((exercise) => exercise.exerciseId)
         .filter((exerciseId): exerciseId is string => isNonEmptyString(exerciseId))
         .slice(0, 3),
-      })),
-      monthThemes: month.weeks.map((week) => `${week.week}:${week.theme}`),
+    })),
   });
 
   return {
@@ -1900,7 +1881,6 @@ export function buildStructuredBodyWorkoutPlan(input: {
       backFriendly,
     },
     sessions: optimizedSessions,
-    month,
   };
 }
 
@@ -2078,127 +2058,6 @@ function summarizeStructuredSessionLine(
   return `${session.dayLabel}: ${topExercises.join(" ")}${suffix}`;
 }
 
-function getMonthPlanThemes(goal: BodyProfile["primaryGoal"]): Array<{
-  week: 1 | 2 | 3 | 4;
-  theme: string;
-  coachNote: string;
-}> {
-  return [
-    {
-      week: 1,
-      theme: "Foundation",
-      coachNote:
-        goal === "athletic"
-          ? "Build technical rhythm and leave reps in reserve."
-          : "Build consistency and keep technique clean on every rep.",
-    },
-    {
-      week: 2,
-      theme: "Progress",
-      coachNote:
-        goal === "fat_loss"
-          ? "Add a small amount of volume while keeping recovery steady."
-          : "Add reps or time without changing exercise quality.",
-    },
-    {
-      week: 3,
-      theme: "Push",
-      coachNote:
-        goal === "muscle_gain"
-          ? "This is the highest stimulus week. Eat and recover like it matters."
-          : goal === "athletic"
-            ? "This is the highest output week. Keep movement sharp and controlled."
-            : "This is the highest workload week. Push the work, not sloppy fatigue.",
-    },
-    {
-      week: 4,
-      theme: "Deload",
-      coachNote: "Reduce volume, keep movement quality high, and come out fresher than you started.",
-    },
-  ];
-}
-
-function getMonthProgressionStyle(goal: BodyProfile["primaryGoal"]): "reps" | "sets" | "density" | "mixed" {
-  if (goal === "fat_loss") return "density";
-  if (goal === "athletic") return "mixed";
-  return "reps";
-}
-
-function progressStructuredExerciseForWeek(
-  exercise: StructuredPlannedExercise,
-  blockType: StructuredWorkoutBlock["type"],
-  week: 1 | 2 | 3 | 4
-): StructuredPlannedExercise {
-  const next: StructuredPlannedExercise = { ...exercise };
-  const role = getExerciseRole(exercise.exerciseId);
-
-  if (typeof next.seconds === "number" && next.seconds > 0) {
-    const minuteAdjustments = blockType === "cardio" ? [0, 180, 300, -300] : [0, 0, 0, 60];
-    const delta = minuteAdjustments[week - 1] ?? 0;
-    next.seconds = Math.max(120, next.seconds + delta);
-    if (week === 4 && typeof next.restSeconds === "number") {
-      next.restSeconds += 15;
-    }
-    return next;
-  }
-
-  if (typeof next.sets === "number" && next.sets > 0) {
-    if (role === "main" || blockType === "main") {
-      if (week === 2 && typeof next.reps === "number") next.reps += 2;
-      if (week === 3) next.sets += 1;
-      if (week === 4) {
-        next.sets = Math.max(2, next.sets - 1);
-        if (typeof next.reps === "number") next.reps = Math.max(8, next.reps - 1);
-      }
-      return next;
-    }
-
-    if (blockType === "accessory" || role === "accessory") {
-      if (week === 2 && typeof next.reps === "number") next.reps += 2;
-      if (week === 3) next.sets += 1;
-      if (week === 4) next.sets = Math.max(2, next.sets - 1);
-      return next;
-    }
-  }
-
-  if (typeof next.reps === "number" && next.reps > 0) {
-    if (week === 2) next.reps += 2;
-    if (week === 4) next.reps = Math.max(8, next.reps - 1);
-  }
-
-  return next;
-}
-
-function buildMonthStructuredSessions(
-  sessions: StructuredWorkoutSession[],
-  goal: BodyProfile["primaryGoal"],
-  trainingReadiness: BodyProfile["trainingReadiness"]
-): StructuredBodyWorkoutPlan["month"] {
-  const weeks = getMonthPlanThemes(goal).map(({ week, theme, coachNote }) => ({
-    week,
-    theme,
-    coachNote,
-    sessions: sessions.map((session) => ({
-      ...session,
-      blocks: session.blocks.map((block) => ({
-        ...block,
-        exercises: block.exercises.map((exercise) =>
-          progressStructuredExerciseForWeek(exercise, block.type, week)
-        ),
-      })),
-    })),
-  }));
-
-  return {
-    durationWeeks: 4,
-    currentWeek: 1,
-    goal,
-    trainingReadiness,
-    progressionStyle: getMonthProgressionStyle(goal),
-    weeks,
-  };
-}
-
 export function buildBodyExercisePlan(input: {
   postureScore: number;
   muscleDefinitionScore: number;
@@ -2236,8 +2095,23 @@ export function buildBodyExercisePlan(input: {
     rotationSeed: input.rotationSeed,
   });
   const oneWeek = structuredPlan.sessions.map((session) => summarizeStructuredSessionLine(session, strengthLoad));
-  const oneMonth =
-    structuredPlan.month?.weeks.map((week) => `Week ${week.week}: ${week.theme}. ${week.coachNote}`) ?? [];
+
+  const oneMonth = [
+    bodyProfile.trainingSplitPreference === "full_body"
+      ? "Week 1: Full-body foundation. Keep technique clean and repeat exposures without chasing fatigue."
+      : "Week 1: Build consistency. Stay 2-3 reps in reserve and lock form quality.",
+    bodyProfile.primaryGoal === "muscle_gain"
+      ? "Week 2: Hypertrophy push. Add one set to primary lifts and keep reps crisp."
+      : bodyProfile.primaryGoal === "athletic"
+        ? "Week 2: Performance block. Add load to compound lifts and maintain sprint quality."
+        : "Week 2: Progressive overload. Add one set to main lifts and +10% cardio volume.",
+    bodyProfile.primaryGoal === "fat_loss"
+      ? "Week 3: Fat-loss acceleration. Keep deficit mild, add one extra zone-2 block, preserve strength output."
+      : bodyProfile.primaryGoal === "muscle_gain"
+        ? "Week 3: Recovery-aware growth. Keep protein high and protect sleep consistency."
+        : "Week 3: Body composition push. Keep protein high, preserve strength, tighten recovery.",
+    "Week 4: Deload and reassess. Cut lifting volume 25%, keep daily movement and mobility.",
+  ];
 
   return { oneWeek, oneMonth };
 }
