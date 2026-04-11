@@ -1054,10 +1054,6 @@ export function buildStructuredBodyWorkoutPlan(input: {
   const needsFatLoss = bodyProfile.primaryGoal === "fat_loss";
   const kneeFriendly = Boolean(input.preferences?.kneeFriendly) || bodyProfile.impactTolerance === "low";
   const backFriendly = Boolean(input.preferences?.backFriendly) || bodyProfile.postureFocus === "core_stack";
-  const needsBackFriendlyHinge =
-    Boolean(input.preferences?.backFriendly) ||
-    bodyProfile.impactTolerance === "low" ||
-    bodyProfile.mobilityNeed === "high";
   const homeBias = recommendation.environment === "home" || bodyProfile.equipmentBias === "home";
   const focusCardio = recommendation.focus === "cardio" || bodyProfile.trainingSplitPreference === "conditioning_mix";
   const focusMobility = recommendation.focus === "mobility" || bodyProfile.mobilityNeed === "high";
@@ -1095,9 +1091,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
     }
   ): string =>
     rankExerciseCandidates(`${rotationBase}|${slot}`, candidates, fallback, {
-      environment:
-        options?.environment ??
-        (recommendation.environment === "both" ? "gym" : recommendation.environment),
+      environment: options?.environment ?? recommendation.environment,
       preferredRoles: options?.preferredRoles,
       discourageLowPriority: options?.discourageLowPriority,
       allowLowPriority: options?.allowLowPriority,
@@ -1114,8 +1108,8 @@ export function buildStructuredBodyWorkoutPlan(input: {
             restSeconds: 60,
           },
           {
-            exerciseId: needsBackFriendlyHinge
-              ? pick("day1-home-hinge-back", ["body_low_impact_back_friendly_hinge", "body_glute_bridge", "body_hip_hinge_drill"], "body_low_impact_back_friendly_hinge")
+            exerciseId: backFriendly
+              ? pick("day1-home-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
               : pick("day1-home-hinge", ["dumbbell_rdl", "body_hip_hinge_drill", "body_form_cue_deadlift"], "dumbbell_rdl"),
             sets: 3,
             reps: 10,
@@ -1144,12 +1138,9 @@ export function buildStructuredBodyWorkoutPlan(input: {
             restSeconds: 75,
           },
           {
-            exerciseId: needsBackFriendlyHinge
-              ? pickRanked("day1-gym-hinge-back-lowdef", ["body_hip_thrust", "body_hamstring_curl_seated", "body_glute_bridge", "body_low_impact_back_friendly_hinge"], "body_hip_thrust", {
-                  preferredRoles: ["main", "accessory"],
-                  discourageLowPriority: true,
-                })
-              : pickRanked("day1-gym-hinge-lowdef", ["dumbbell_rdl", "body_deadlift", "body_hip_thrust", "body_hamstring_curl_seated"], "dumbbell_rdl", {
+            exerciseId: backFriendly
+              ? pick("day1-gym-hinge-back-lowdef", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+              : pickRanked("day1-gym-hinge-lowdef", ["dumbbell_rdl", "body_deadlift", "body_hip_thrust", "body_hip_hinge_drill"], "dumbbell_rdl", {
                   preferredRoles: ["main"],
                   discourageLowPriority: true,
                 }),
@@ -1182,12 +1173,9 @@ export function buildStructuredBodyWorkoutPlan(input: {
             restSeconds: 75,
           },
           {
-            exerciseId: needsBackFriendlyHinge
-              ? pickRanked("day1-gym-hinge-back", ["body_hip_thrust", "body_hamstring_curl_seated", "body_glute_bridge", "body_low_impact_back_friendly_hinge"], "body_hip_thrust", {
-                  preferredRoles: ["main", "accessory"],
-                  discourageLowPriority: true,
-                })
-              : pickRanked("day1-gym-hinge", ["body_deadlift", "dumbbell_rdl", "body_hip_thrust", "body_hamstring_curl_seated"], "body_deadlift", {
+            exerciseId: backFriendly
+              ? pick("day1-gym-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
+              : pickRanked("day1-gym-hinge", ["body_deadlift", "dumbbell_rdl", "body_hip_thrust", "body_form_cue_deadlift"], "body_deadlift", {
                   preferredRoles: ["main"],
                   discourageLowPriority: true,
                 }),
@@ -1253,12 +1241,9 @@ export function buildStructuredBodyWorkoutPlan(input: {
   const usesFullBodyFoundationTemplate = starterThreeDayTemplate === "fullbody_foundation";
   const usesPushPullEngineTemplate = starterThreeDayTemplate === "push_pull_engine";
   const usesTemplateRotation = usesFullBodyFoundationTemplate || usesPushPullEngineTemplate;
-  const usesMovementQualityDay =
-    focusMobility &&
-    (bodyProfile.mobilityNeed === "high" || bodyProfile.impactTolerance === "low");
 
   const day1MainExercises =
-    usesMovementQualityDay
+    focusMobility
       ? [
           { exerciseId: backFriendly ? "body_low_impact_back_friendly_hinge" : "body_hip_hinge_drill", sets: 3, reps: 12, restSeconds: 45 },
           {
@@ -1502,7 +1487,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
   const day1Title =
     homeBias
       ? "Home Lower Body"
-      : usesMovementQualityDay
+      : focusMobility
         ? "Lower Body Mechanics"
         : usesFullBodyFoundationTemplate
           ? "Full Body Foundation A"
@@ -1542,7 +1527,7 @@ export function buildStructuredBodyWorkoutPlan(input: {
       id: "body-day-1",
       dayLabel: "Mon",
       title: day1Title,
-      goal: usesMovementQualityDay ? "mobility" : "strength",
+      goal: focusMobility ? "mobility" : "strength",
       estimatedMinutes: recommendation.sessionMinutes,
       environment: recommendation.environment,
       tags: [
@@ -1563,8 +1548,8 @@ export function buildStructuredBodyWorkoutPlan(input: {
         },
         {
           id: "day1-main",
-          label: usesMovementQualityDay ? "Movement Quality" : "Main Strength",
-          type: usesMovementQualityDay ? "accessory" : "main",
+          label: focusMobility ? "Movement Quality" : "Main Strength",
+          type: focusMobility ? "accessory" : "main",
           exercises: day1MainExercises,
         },
         {
@@ -1716,11 +1701,8 @@ export function buildStructuredBodyWorkoutPlan(input: {
                 ]
               : [
                   {
-                    exerciseId: needsBackFriendlyHinge
-                      ? pickRanked("day4-strength-hinge-back", ["body_hip_thrust", "body_hamstring_curl_seated", "body_glute_bridge", "body_low_impact_back_friendly_hinge"], "body_hip_thrust", {
-                          preferredRoles: ["main", "accessory"],
-                          discourageLowPriority: true,
-                        })
+                    exerciseId: backFriendly
+                      ? pick("day4-strength-hinge-back", ["body_low_impact_back_friendly_hinge", "body_hip_hinge_drill", "body_glute_bridge"], "body_low_impact_back_friendly_hinge")
                       : pickRanked("day4-strength-hinge", ["body_deadlift", "dumbbell_rdl", "body_hip_thrust", "body_form_cue_deadlift"], "body_deadlift", {
                           preferredRoles: ["main"],
                           discourageLowPriority: true,
